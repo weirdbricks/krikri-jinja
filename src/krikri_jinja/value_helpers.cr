@@ -66,6 +66,8 @@ module KrikriJinja
       k == k.trunc ? "#{KEY_MARKER}i:#{k.trunc.to_i64}" : "#{KEY_MARKER}f:#{format_float(k)}"
     when Nil    then "#{KEY_MARKER}n"
     when Undefined then "#{KEY_MARKER}u"
+    when TupleValue
+      "#{KEY_MARKER}t:" + k.items.map { |i| dict_key(i) }.join("\u0001")
     else "#{KEY_MARKER}s:#{stringify(v)}"
     end
   end
@@ -80,6 +82,9 @@ module KrikriJinja
     when "f" then AnyValue.new(val.to_f64)
     when "n" then AnyValue.new(nil)
     when "u" then AnyValue.new(Undefined.new)
+    when "t"
+      items = body[2..].split("\u0001").map { |k| decode_key(k) }
+      AnyValue.new(TupleValue.new(items))
     else AnyValue.new(val)
     end
   end
@@ -197,6 +202,9 @@ module KrikriJinja
   # Containment (`in`).
   def self.contains?(container : AnyValue, item : AnyValue) : Bool
     case c = container.raw
+    when Markup
+      i = item.raw
+      i.is_a?(String) ? c.value.includes?(i) : false
     when String
       i = item.raw
       i.is_a?(String) && c.includes?(i)
