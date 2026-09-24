@@ -445,7 +445,7 @@ module KrikriJinja
   register_filter("wordwrap") do |v, args, kwargs, _c|
     width = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 79i64)
     break_long = (kwargs["break_long_words"]? || args[1]? || AnyValue.new(true)).raw != false
-    wrapstring = kwargs["wrapstring"]?.try(&.raw.as?(String)) || "\n"
+    wrapstring = kwargs["wrapstring"]?.try(&.raw.as?(String)) || args[2]?.try(&.raw.as?(String)) || "\n"
     raise TemplateError.new("invalid width #{width} (must be > 0)", 0) unless width > 0
     result = stringify(v).split('\n').map do |line|
       words = line.split(' ')

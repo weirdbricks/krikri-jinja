@@ -758,7 +758,15 @@ module KrikriJinja
       when Nodes::DictExprNode
         h = {} of String => AnyValue
         expr.keys.each_with_index do |k, i|
-          h[KrikriJinja.dict_key(eval(k))] = eval(expr.values[i])
+          key_v = eval(k)
+          enc = KrikriJinja.dict_key(key_v)
+          alt = KrikriJinja.dict_key_alt(key_v)
+          # python: 1 and True are the same dict key; first key form wins
+          if alt && h.has_key?(alt)
+            h[alt] = eval(expr.values[i])
+          else
+            h[enc] = eval(expr.values[i])
+          end
         end
         AnyValue.new(h)
       when Nodes::BinOpNode
@@ -889,7 +897,11 @@ module KrikriJinja
         x = as_int(a)
         y = as_int(b)
         if x && y
-          x * y
+          begin
+            x * y
+          rescue OverflowError
+            KrikriJinja.big_mul(x.to_s, y.to_s)
+          end
         elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
           (x ? x.to_f64 : a.as(Float64)) * (y ? y.to_f64 : b.as(Float64))
         else
@@ -1019,7 +1031,8 @@ module KrikriJinja
       result = case raw = obj.raw
                when Hash
                  k = KrikriJinja.dict_key(key)
-                 raw[k]?
+                 alt = KrikriJinja.dict_key_alt(key)
+                 raw[k]? || (alt ? raw[alt]? : nil)
                when Array
                  idx = key.raw.as?(Int64) || raise TemplateError.new("list indices must be integers", expr.line)
                  idx < 0 ? raw[raw.size + idx]? : raw[idx]?
