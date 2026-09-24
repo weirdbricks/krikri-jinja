@@ -260,6 +260,7 @@ module KrikriJinja
     AnyValue.new(stringify(v).split(/[ \t\r\n]+/).reject(&.empty?).size.to_i64)
   end
   register_filter("indent") do |v, args, kwargs, _c|
+    raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String)
     amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 4i64)
     first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
     prefix = first ? " " * amount : ""
@@ -327,6 +328,10 @@ module KrikriJinja
                if !inner_kwargs.empty? && !KWARG_FILTERS.includes?(fname)
                  raise TemplateError.new("#{fname}() got an unexpected keyword argument", 0)
                end
+               max_args = MAX_POSITIONAL[fname]?
+               if max_args && args[1..].size > max_args
+                 raise TemplateError.new("#{fname}() takes at most #{max_args} positional argument(s)", 0)
+               end
                to_iterable(v).map { |item| f.call(item, args[1..], inner_kwargs, c) }
              end
     AnyValue.new(GeneratorValue.new(result))
@@ -346,7 +351,11 @@ module KrikriJinja
   register_filter("groupby") do |v, args, kwargs, _c|
     attr = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("groupby requires an attribute", 0)
     groups = [] of Tuple(AnyValue, Array(AnyValue))
-    to_iterable(v).each do |item|
+    sorted_items = stable_sort(to_iterable(v)) do |a, b|
+      compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(Undefined.new),
+                     get_attr(b, attr) || kwargs["default"]? || AnyValue.new(Undefined.new))
+    end
+    sorted_items.each do |item|
       key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(Undefined.new)
       if g = groups.find { |(k, _)| values_equal(k, key) }
         g[1] << item
@@ -363,11 +372,7 @@ module KrikriJinja
     sorted_groups = stable_sort(grouped) do |a, b|
       ka = a.raw.as(Hash)["grouper"]
       kb = b.raw.as(Hash)["grouper"]
-      begin
-        compare_values(ka, kb)
-      rescue TemplateError
-        (stringify(ka).downcase) <=> (stringify(kb).downcase)
-      end
+      compare_values(ka, kb)
     end
     AnyValue.new(sorted_groups)
   end
@@ -537,30 +542,30 @@ module KrikriJinja
   register_filter("pprint") { |v, _a, _k, _c| AnyValue.new(stringify(v)) }
   register_filter("urlize") do |v, args, kwargs, _c|
     text = stringify(v)
-    pattern = /(?:[\w.+-]+@[\w-]+(?:\.[\w-]+)+)|(?:https?:\/\/[^\s<]+)|(?:www\.[^\s<]+)/
-    result = text.gsub(pattern) do |m|
-      md = m.match(pattern).not_nil!
-      token = md[0]
-      trail = ""
-      while !token.empty? && ".,;:!?)]}>'\"".includes?(token[-1])
-        trail = "#{token[-1]}#{trail}"
-        token = token[0...-1]
-      end
-      href = nil
-      if token.includes?("@") && !token.starts_with?("http")
-        href = "mailto:#{token}"
-      elsif token.starts_with?("www.")
-        href = "https://#{token}"
+    scheme_re = /^https?:\/\//
+    email_re = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/
+    pieces = text.split(/(\s+)/)
+    rendered = pieces.map do |word|
+      if word.match(/^\s*$/) || word.empty?
+        word
       else
-        href = token
+        token = word
+        trail = ""
+        while !token.empty? && ".,;:!?)]}'\"".includes?(token[-1])
+          trail = "#{token[-1]}#{trail}"
+          token = token[0...-1]
+        end
+        if scheme_re.matches?(token) || token.starts_with?("www.")
+          href = token.starts_with?("www.") ? "https://#{token}" : token
+          %(<a href="#{KrikriJinja.escape_html(href)}" rel="noopener">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
+        elsif email_re.matches?(token)
+          %(<a href="mailto:#{KrikriJinja.escape_html(token)}">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
+        else
+          KrikriJinja.escape_html(word)
+        end
       end
-      if href.starts_with?("mailto:")
-        %(<a href="#{href}">#{token}</a>#{trail})
-      else
-        %(<a href="#{href}" rel="noopener">#{token}</a>#{trail})
-      end
-    end
-    AnyValue.new(Markup.new(result))
+    end.join
+    AnyValue.new(Markup.new(rendered))
   end
 
   register_filter("random") do |v, _a, _k, _c|
@@ -574,6 +579,12 @@ module KrikriJinja
                      max min reject rejectattr replace round select selectattr
                      slice sort sum tojson trim truncate unique urlencode
                      wordwrap groupby batch urlize wordcount format)
+
+  # Strict positional arity for filters python raises on when over-called.
+  MAX_POSITIONAL = {"center" => 1, "trim" => 1, "indent" => 2, "round" => 2,
+                    "batch" => 2, "slice" => 2, "join" => 1, "int" => 2,
+                    "float" => 1, "default" => 2, "truncate" => 4,
+                    "wordwrap" => 2, "filesizeformat" => 1, "sum" => 2}
 
   private def self.test_select(v, args, kwargs, ctx, keep : Bool) : Array(AnyValue)
     fname = args[0]?.try(&.raw.as?(String)) || kwargs["test"]?.try(&.raw.as?(String)) ||
@@ -708,7 +719,11 @@ module KrikriJinja
     y = b.as?(Int64) || b.as?(Float64) || (b.is_a?(Bool) ? (b ? 1i64 : 0i64) : nil)
     raise TemplateError.new("unsupported operand type(s) for +", 0) unless x && y
     if x.is_a?(Int64) && y.is_a?(Int64)
-      x + y
+      if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
+        KrikriJinja.big_add(x.to_s, y.to_s)
+      else
+        x + y
+      end
     else
       x.to_f64 + y.to_f64
     end

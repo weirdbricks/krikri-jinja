@@ -76,11 +76,12 @@ module KrikriJinja
   BUILTIN_GLOBALS = {} of String => AnyValue
 
   BUILTIN_GLOBALS["range"] = AnyValue.new(SimpleCallable.new("range") do |args, _kwargs, _ctx|
-    start, stop, step = if args.size == 1
-                          {0i64, args[0].raw.as?(Int64) || 0i64, 1i64}
-                        elsif args.size >= 2
-                          {args[0].raw.as?(Int64) || 0i64, args[1].raw.as?(Int64) || 0i64,
-                           args.size >= 3 ? (args[2].raw.as?(Int64) || 1i64) : 1i64}
+    coerced = args.map { |arg| arg.raw.is_a?(Bool) ? AnyValue.new(arg.raw.as(Bool) ? 1i64 : 0i64) : arg }
+    start, stop, step = if coerced.size == 1
+                          {0i64, coerced[0].raw.as?(Int64) || 0i64, 1i64}
+                        elsif coerced.size >= 2
+                          {coerced[0].raw.as?(Int64) || 0i64, coerced[1].raw.as?(Int64) || 0i64,
+                           coerced.size >= 3 ? (coerced[2].raw.as?(Int64) || 1i64) : 1i64}
                         else
                           raise TemplateError.new("range expects 1-3 arguments", 0)
                         end
@@ -148,7 +149,7 @@ module KrikriJinja
   end)
 
   BUILTIN_GLOBALS["joiner"] = AnyValue.new(SimpleCallable.new("joiner") do |args, _kwargs, _ctx|
-    sep = args[0]?.try(&.raw.as?(String)) || ""
+    sep = args[0]?.try(&.raw.as?(String)) || ", "
     AnyValue.new(Joiner.new(sep))
   end)
 
