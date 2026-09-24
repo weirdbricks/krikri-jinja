@@ -1511,6 +1511,106 @@ add("test is number bool", "{{ true is number }} {{ true is integer }}")
 add("string filter on markup", "{{ ('<x>' | safe) | length }}", autoescape=False)
 add("escape length", "{{ '<x>' | escape | length }}")
 
+
+# ================= edge-case expansion (round 9) =================
+
+# --- string methods deep ---------------------------------------------------
+add("str title mixed delims", "{{ \"it's-a_test\".title() }}")
+add("str cap title", "{{ 'ABC def'.title() }}")
+add("str isalnum unicode", "{{ 'h\u00e9llo'.isalpha() }}")
+add("str center odd rem", "{{ 'ab'.center(5, '*') }} {{ 'abc'.center(6, '*') }}")
+add("str find empty sub", "{{ 'abc'.find('') }} {{ 'abc'.rfind('') }}")
+add("str count negatives", "{{ 'abcabc'.count('b', -4) }}")
+add("str ljust neg", "{{ 'a'.ljust(-1) }}|")
+add("str split whitespace kinds", "{{ 'a\\t\\nb'.split() | join(',') }}")
+add("str strip none found", "{{ 'abc'.strip('z') }}")
+add("str removesuffix overlap", "{{ 'aaaa'.removesuffix('aa') }}")
+add("str swapcase digits", "{{ 'a1B2'.swapcase() }}")
+add("str zfill sign plus", "{{ '+5'.zfill(4) }}")
+add("str index error message", "{{ 'abc'.index('z') }}")
+
+# --- urlencode/urlize deep --------------------------------------------------
+add("urlencode dict key quote", "{{ {'a\"b': 'c'} | urlencode }}")
+add("urlencode dict slash val", "{{ {'a': 'b/c'} | urlencode }}")
+add("urlize ftp", "{{ 'ftp://files.com' | urlize }}")
+add("urlize email trailing dot", "{{ 'a@b.com.' | urlize }}")
+add("urlize www path", "{{ 'www.x.io/path?q=1' | urlize }}")
+add("urlize uppercase scheme", "{{ 'HTTP://X.COM' | urlize }}")
+
+# --- filter interactions -------------------------------------------------------
+add("select then sort", "{{ [3,1,2] | select('odd') | sort | join(',') }}")
+add("map then unique", "{{ ['a','b','a'] | map('upper') | unique | join(',') }}")
+add("batch map flatten", "{{ [1,2,3,4] | batch(2) | map('first') | join(',') }}")
+add("groupby then map attr", "{% for g in items | groupby('k') %}{{ g.list | map(attribute='v') | join('+') }};{% endfor %}",
+    {"items": [{"k": "a", "v": 1}, {"k": "a", "v": 2}]})
+add("dictsort then items", "{{ {'b': 1, 'a': 2} | dictsort | map('list') | join(',') }}")
+add("first of generator", "{{ [1,2] | select('odd') | first }}")
+add("sum of generator", "{{ [1,2,3] | select('odd') | sum }}")
+add("join of rejectattr", "{{ users | rejectattr('x') | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "a", "x": 1}, {"n": "b"}]})
+add("sort of unique", "{{ ['b','a','b'] | unique | sort | join(',') }}")
+add("reverse of sort", "{{ [1,3,2] | sort | reverse | join(',') }}")
+
+# --- loops: structure -------------------------------------------------------------
+add("for tuple target single", "{% for a, in [(1,)] %}{{ a }}{% endfor %}")
+add("nested loop filtering", "{% for a in [1,2] %}{% for b in [1,2] if b != a %}{{ a }}{{ b }} {% endfor %}{% endfor %}")
+add("recursive nested deeper", "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
+    {"data": [{"c": [{"c": [{"c": []}]}]}]})
+add("for over range in expr", "{% for i in range(2) | reverse %}{{ i }}{% endfor %}")
+add("loop cycle single", "{% for i in [1,2] %}{{ loop.cycle('z') }}{% endfor %}")
+add("loop changed types", "{% for x in [1, '1', 1] %}{{ loop.changed(x) }} {% endfor %}")
+add("for with attr test on tuple", "{% for a, b in [(1, 2)] if a == 1 %}{{ b }}{% endfor %}")
+
+# --- inheritance: scope edges ------------------------------------------------------
+add("super inside include", "{% extends 'base.html' %}{% block b %}{% include 'p.html' %}{% endblock %}", templates={
+    "base.html": "{% block b %}B{% endblock %}",
+    "p.html": "{{ super is defined }}"})
+add("block var scope from for", "{% extends 'base.html' %}{% block b %}{% for i in [1] %}{{ i }}{% endfor %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}"})
+add("macro in parent used in child block", "{% extends 'base.html' %}{% block b %}{{ gm() }}{% endblock %}", templates={
+    "base.html": "{% macro gm() %}G{% endmacro %}{% block b %}{% endblock %}"})
+add("import alias then from alias", "{% import 'm.html' as m %}{% from 'm.html' import v as vv %}{{ m.v }}{{ vv }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("include changes nothing after", "{% include 'p.html' %}{{ z | default('d') }}", templates={
+    "p.html": "{% set z = 1 %}"})
+
+# --- whitespace: round 6 -----------------------------------------------------------
+add("trim blocks lstrip combined tag", "x\n  {% if true %}y{% endif %}\nz", lstrip_blocks=True, trim_blocks=True)
+add("marker minus on endif", "{% if true %}\na\n{% endif -%}\nb")
+add("var marker between words", "a {{- 'b' -}} c")
+add("raw inside for markers", "{% for i in [1] %}{%- raw -%}r{%- endraw -%}{% endfor %}")
+add("comment tag no trim", "a\n{# c #}\nb", trim_blocks=False)
+add("multiple blank lines", "a\n\n\nb")
+
+# --- numbers: round 6 -----------------------------------------------------------------
+add("float division big", "{{ 1e308 / 1e-308 }}")
+add("mod large", "{{ 1000000007 % 998244353 }}")
+add("pow nested parens", "{{ (2 ** 3) ** 2 }} {{ 2 ** (3 ** 2) }}")
+add("compare mixed int float chain", "{{ 1 < 1.5 < 2 }}")
+add("neg zero compare", "{{ -0.0 == 0 }} {{ -0.0 < 0 }}")
+add("sum mixed int float", "{{ [1, 2.5] | sum }}")
+add("abs big", "{{ -1e308 | abs }}")
+
+# --- errors: shapes ----------------------------------------------------------------------
+add("undefined call error", "{{ missing() }}")
+add("int call error", "{{ (5)() }}")
+add("string call error", "{{ 'a'() }}")
+add("add list int error", "{{ [1] + 1 }}")
+add("compare dict num error", "{{ {'a': 1} < 2 }}")
+add("mod string error", "{{ 'a' % 2 }}")
+add("unpack dict error", "{% for a, b in {'x': 1} %}{{ a }}{% endfor %}")
+
+# --- misc: round 5 -------------------------------------------------------------------------
+add("nested with in for", "{% for i in [1] %}{% with x = i + 1 %}{{ x }}{% endwith %}{% endfor %}")
+add("set in with reused after", "{% with x = 1 %}{% set y = x %}{% endwith %}{{ y | default('d') }}")
+add("ternary in attr arg", "{{ users | map(attribute='n' if true else 'x') | join(',') }}", {"users": [{"n": "a"}]})
+add("filter in subscript", "{{ d['a' | upper] }}", {"d": {"A": "v"}})
+add("test in subscript key", "{{ {'a': 1}['a' is string] }}")
+add("dict get chain with default", "{{ d.get('zz', 'none') }}", {"d": {"a": 1}})
+add("chained method call on filter result", "{{ ' ab '.strip().upper() }}")
+add("boolean kwargs truthy", "{{ [1,2] | batch(2, fill_with=0) | first | join(',') }}")
+add("long template stress", "{% for i in range(3) %}{% if i % odd %}{{ i }}{% endif %}{% endfor %}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
