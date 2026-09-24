@@ -7,6 +7,7 @@ module KrikriJinja
     getter blocks : Hash(String, Array(Nodes::BlockNode))
     property hide_locals : Bool
     property hide_from : Int32
+    property hide_loop_var : Bool
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
@@ -16,6 +17,7 @@ module KrikriJinja
       @scope_is_local = [false]
       @hide_locals = false
       @hide_from = 0
+      @hide_loop_var = false
     end
 
     def [](name : String) : AnyValue
@@ -23,11 +25,13 @@ module KrikriJinja
     end
 
     def []?(name : String) : AnyValue?
+      return if @hide_loop_var && name == "loop"
       @scopes.reverse_each.with_index do |scope, rev_i|
         i = @scopes.size - 1 - rev_i
         next if @hide_locals && i < @hide_from && @scope_is_local[i]?
         return scope[name]? if scope.has_key?(name)
       end
+      return AnyValue.new(Undefined.new) if @hide_loop_var && name == "loop"
       @globals[name]?
     end
 
