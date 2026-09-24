@@ -5,28 +5,25 @@ module KrikriJinja
     property autoescape : Bool
     getter loader : Loader?
     getter blocks : Hash(String, Array(Nodes::BlockNode))
+    property hide_locals : Bool
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
                    @autoescape = false)
       @scopes = [{} of String => AnyValue]
       @blocks = {} of String => Array(Nodes::BlockNode)
+      @scope_is_local = [false]
+      @hide_locals = false
     end
 
     def [](name : String) : AnyValue
-      @scopes.reverse_each do |scope|
-        if scope.has_key?(name)
-          return scope[name]
-        end
-      end
-      if @globals.has_key?(name)
-        return @globals[name]
-      end
-      AnyValue.new(Undefined.new)
+      (v = self[name]?) ? v : AnyValue.new(Undefined.new)
     end
 
     def []?(name : String) : AnyValue?
-      @scopes.reverse_each do |scope|
+      @scopes.reverse_each.with_index do |scope, rev_i|
+        i = @scopes.size - 1 - rev_i
+        next if @hide_locals && @scope_is_local[i]?
         return scope[name]? if scope.has_key?(name)
       end
       @globals[name]?
@@ -45,12 +42,14 @@ module KrikriJinja
       @scopes[0].delete(name)
     end
 
-    def push_scope
+    def push_scope(local = false)
       @scopes.push({} of String => AnyValue)
+      @scope_is_local.push(local)
     end
 
     def pop_scope
       @scopes.pop
+      @scope_is_local.pop
     end
 
     def register_block(name : String, node : Nodes::BlockNode)
