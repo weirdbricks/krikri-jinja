@@ -15,14 +15,14 @@ module KrikriJinja
   register_test("odd") { |v, _a, _k, _c| int_of(v) % 2 == 1 }
   register_test("divisibleby") { |v, args, _k, _c| int_of(v) % int_of(args[0]) == 0 }
   register_test("string") { |v, _a, _k, _c| v.raw.is_a?(String) }
-  register_test("number") { |v, _a, _k, _c| v.raw.is_a?(Int64) || v.raw.is_a?(Float64) }
+  register_test("number") { |v, _a, _k, _c| v.raw.is_a?(Int64) || v.raw.is_a?(Float64) || v.raw.is_a?(Bool) }
   register_test("integer") { |v, _a, _k, _c| v.raw.is_a?(Int64) }
   register_test("float") { |v, _a, _k, _c| v.raw.is_a?(Float64) }
   register_test("boolean") { |v, _a, _k, _c| v.raw.is_a?(Bool) }
   register_test("mapping") { |v, _a, _k, _c| v.raw.is_a?(Hash) }
-  register_test("sequence") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) }
-  register_test("iterable") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) }
-  register_test("callable") { |v, _a, _k, _c| v.raw.is_a?(Callable) }
+  register_test("sequence") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) || v.raw.is_a?(TupleValue) || v.raw.is_a?(Undefined) }
+  register_test("iterable") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) || v.raw.is_a?(TupleValue) || v.raw.is_a?(GeneratorValue) || v.raw.is_a?(Undefined) }
+  register_test("callable") { |v, _a, _k, _c| v.raw.is_a?(Callable) || v.raw.is_a?(Undefined) }
   register_test("sameas") { |v, args, _k, _c| same_as?(v.raw, args[0].raw) }
   register_test("true") { |v, _a, _k, _c| v.raw == true }
   register_test("false") { |v, _a, _k, _c| v.raw == false }

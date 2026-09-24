@@ -12,8 +12,8 @@ module KrikriJinja
   VERSION = "0.3.0"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
-  def self.percent_encode(s : String) : String
-    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~"
+  def self.percent_encode(s : String, extra_safe : String = "") : String
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~" + extra_safe
     String.build do |io|
       s.each_byte do |b|
         c = b.chr
@@ -50,47 +50,104 @@ module KrikriJinja
   # Python %-style formatting (the `format` filter).
   def self.py_format(fmt : String, args : Array(AnyValue)) : String
     idx = 0
-    fmt.gsub(/%[-+ #0]*\d*(?:\.\d+)?[sdixXoeEfFgGr%]/) do |m|
+    fmt.gsub(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/) do |m|
       if m == "%%"
         "%"
       else
-        arg = args[idx]? || AnyValue.new(nil)
-        idx += 1
-        conv = m[-1]
-        flags = m[1...m.size - 1]
-        body = case conv
-               when 's', 'r'
-                 s = stringify(arg)
-                 conv == 'r' ? "'#{s}'" : s
-               when 'd', 'i', 'u'
-                 n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) || 0i64
-                 n.to_s
-               when 'x' then (arg.raw.as?(Int64) || 0i64).to_s(16)
-               when 'X' then (arg.raw.as?(Int64) || 0i64).to_s(16).upcase
-               when 'o' then (arg.raw.as?(Int64) || 0i64).to_s(8)
-               when 'e', 'E', 'f', 'F', 'g', 'G'
-                 f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) || 0.0
-                 prec_match = flags.match(/\.(\d+)/)
-                 prec = (prec_match.try(&.[1].to_i) || 6)
-                 case conv
-                 when 'f', 'F' then f.round(prec).to_s
-                 else f.to_s
-                 end
-               else stringify(arg)
-               end
-        if width_match = flags.match(/(\d+)$/)
-          width = width_match[1].to_i
-          if flags.includes?('0') && {'d', 'i', 'u', 'x', 'X', 'o', 'f', 'F'}.includes?(conv)
-            sign = body.starts_with?("-") ? "-" : ""
-            digits = body.lstrip('-')
-            body = sign + digits.rjust(width - sign.size, '0')
-          elsif body.size < width
-            body = flags.includes?('-') ? body.ljust(width) : body.rjust(width)
+        md = m.match(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/).not_nil!
+        flags = md[1]? || ""
+        width_spec = md[2]?
+        prec_spec = md[3]?
+        conv = md[4]?.try(&.[-1]) || "s"
+        width : Int64? = nil
+        prec : Int64? = nil
+        if width_spec == "*"
+          w = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
+          idx += 1
+          width = w.raw.as?(Int64)
+        elsif width_spec
+          width = width_spec.try(&.to_i?).try(&.to_i64)
+        end
+        if prec_spec == "*"
+          pv = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
+          idx += 1
+          prec = pv.raw.as?(Int64)
+        elsif prec_spec
+          prec = prec_spec.try(&.to_i?).try(&.to_i64)
+        end
+        if conv == '%'
+          "%"
+        else
+          arg = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
+          idx += 1
+          cfmt = "%#{flags}#{width ? width.to_s : ""}#{prec ? ".#{prec}" : ""}#{conv}"
+          case conv
+          when 's'
+            body = stringify(arg)
+            width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body
+          when 'r'
+            inner = stringify(arg)
+            body = arg.raw.is_a?(String) ? "'#{inner}'" : inner
+            width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body
+          when 'd', 'i', 'u'
+            n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) ||
+                (arg.raw.is_a?(Bool) ? (arg.raw ? 1i64 : 0i64) : nil) ||
+                raise TemplateError.new("%d format: a number is required", 0)
+            ::sprintf(cfmt, n)
+          when 'x', 'X', 'o'
+            n = arg.raw.as?(Int64) || raise TemplateError.new("an integer is required", 0)
+            ::sprintf(cfmt, n)
+          when 'e', 'E', 'f', 'F', 'g', 'G'
+            f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) ||
+                (arg.raw.is_a?(Bool) ? (arg.raw ? 1.0 : 0.0) : nil) ||
+                raise TemplateError.new("a float is required", 0)
+            ::sprintf(cfmt, f)
+          else
+            stringify(arg)
           end
         end
-        body
       end
     end
+  end
+
+  # str.format: positional ({} and {N}) replacement with {{ }} escapes.
+  def self.str_format(fmt : String, args : Array(AnyValue)) : String
+    auto_idx = 0
+    out = String.build do |io|
+      i = 0
+      while i < fmt.size
+        c = fmt[i]
+        if c == '{' && i + 1 < fmt.size
+          if fmt[i + 1] == '{'
+            io << '{'
+            i += 2
+          else
+            j = i + 1
+            while j < fmt.size && fmt[j].ascii_number?
+              j += 1
+            end
+            if j < fmt.size && fmt[j] == '}'
+              spec = fmt[(i + 1)...j]
+              idx = spec.empty? ? auto_idx : spec.to_i
+              auto_idx += 1 if spec.empty?
+              arg = args[idx]? || raise TemplateError.new("format string index out of range", 0)
+              io << stringify(arg)
+              i = j + 1
+            else
+              io << c
+              i += 1
+            end
+          end
+        elsif c == '}' && i + 1 < fmt.size && fmt[i + 1] == '}'
+          io << '}'
+          i += 2
+        else
+          io << c
+          i += 1
+        end
+      end
+    end
+    out
   end
 
   # Deep-converts plain Crystal values (nested hashes/arrays of mixed types)
