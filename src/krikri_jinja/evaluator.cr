@@ -114,14 +114,94 @@ module KrikriJinja
     def initialize(@name, @params, @body, @closure)
     end
 
+    def references_special?(body : Array(Nodes::Node), name : String) : Bool
+      body.any? { |n| node_references?(n, name) }
+    end
+
+    private def node_references?(n : Nodes::Node, name : String) : Bool
+      case n
+      when Nodes::OutputNode
+        expr_references?(n.as(Nodes::OutputNode).expr, name)
+      when Nodes::SetNode
+        n.as(Nodes::SetNode).targets.includes?(name)
+      when Nodes::IfNode
+        n.as(Nodes::IfNode).branches.any? do |_, b|
+          b.any? { |x| node_references?(x, name) }
+        end || (n.as(Nodes::IfNode).orelse || [] of Nodes::Node).any? { |x| node_references?(x, name) }
+      when Nodes::ForNode
+        n = n.as(Nodes::ForNode)
+        n.body.any? { |x| node_references?(x, name) } ||
+          (n.orelse || [] of Nodes::Node).any? { |x| node_references?(x, name) } ||
+          expr_references?(n.iter, name) || (n.test.try { |t| expr_references?(t, name) } || false)
+      else
+        false
+      end
+    end
+
+    private def expr_references?(e : Nodes::ExprNode, name : String) : Bool
+      case e
+      when Nodes::NameNode
+        e.as(Nodes::NameNode).name == name
+      when Nodes::BinOpNode
+        n = e.as(Nodes::BinOpNode)
+        expr_references?(n.left, name) || expr_references?(n.right, name)
+      when Nodes::UnaryOpNode
+        expr_references?(e.as(Nodes::UnaryOpNode).operand, name)
+      when Nodes::FilterNode
+        n = e.as(Nodes::FilterNode)
+        expr_references?(n.target, name) || n.args.any? { |a| expr_references?(a, name) } ||
+          n.kwargs.any? { |_, v| expr_references?(v, name) }
+      when Nodes::TestNode
+        n = e.as(Nodes::TestNode)
+        expr_references?(n.target, name) || n.args.any? { |a| expr_references?(a, name) }
+      when Nodes::CallExprNode
+        n = e.as(Nodes::CallExprNode)
+        expr_references?(n.func, name) || n.args.any? { |a| expr_references?(a, name) }
+      when Nodes::GetattrNode
+        expr_references?(e.as(Nodes::GetattrNode).obj, name)
+      when Nodes::GetitemNode
+        n = e.as(Nodes::GetitemNode)
+        expr_references?(n.obj, name) || (n.key.try { |k| expr_references?(k, name) } || false)
+      when Nodes::SliceNode
+        n = e.as(Nodes::SliceNode)
+        expr_references?(n.obj, name)
+      when Nodes::TupleExprNode
+        e.as(Nodes::TupleExprNode).items.any? { |i| expr_references?(i, name) }
+      when Nodes::ListExprNode
+        e.as(Nodes::ListExprNode).items.any? { |i| expr_references?(i, name) }
+      when Nodes::DictExprNode
+        n = e.as(Nodes::DictExprNode)
+        n.keys.any? { |k| expr_references?(k, name) } || n.values.any? { |v| expr_references?(v, name) }
+      when Nodes::ConcatNode
+        e.as(Nodes::ConcatNode).parts.any? { |p| expr_references?(p, name) }
+      when Nodes::CompareNode
+        n = e.as(Nodes::CompareNode)
+        expr_references?(n.left, name) || n.comparators.any? { |cm| expr_references?(cm, name) }
+      when Nodes::CondExprNode
+        n = e.as(Nodes::CondExprNode)
+        expr_references?(n.truthy, name) || (n.falsy.try { |f| expr_references?(f, name) } || false) ||
+          expr_references?(n.test, name)
+      else
+        false
+      end
+    end
+
     def call(args : Array(AnyValue), kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
       work = @closure
+      uses_kwargs = references_special?(@body, "kwargs")
+      uses_varargs = references_special?(@body, "varargs")
+      if args.size > @params.size && !uses_varargs
+        raise TemplateError.new("macro #{@name} takes not more than #{@params.size} argument(s)", 0)
+      end
       work.push_scope
       begin
         remaining_args = args.size > @params.size ? args[@params.size..] : [] of AnyValue
         work["varargs"] = AnyValue.new(remaining_args)
         remaining_kwargs = kwargs.dup
         @params.each { |(pname, _)| remaining_kwargs.delete(pname) }
+        if !remaining_kwargs.empty? && !uses_kwargs
+          raise TemplateError.new("macro #{@name} takes no keyword argument '#{remaining_kwargs.first_key}'", 0)
+        end
         work["kwargs"] = AnyValue.new(remaining_kwargs)
         @params.each_with_index do |(pname, default), i|
           value = if i < args.size
@@ -443,7 +523,6 @@ module KrikriJinja
                                 when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
-                                when Nil    then [] of AnyValue
                                 when Undefined then [] of AnyValue
                                 when GeneratorValue then raw.items
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
@@ -610,17 +689,14 @@ module KrikriJinja
         # Rendered with the surrounding context minus loop locals; sets and
         # macro definitions stay private to the included template.
         @ctx.push_scope
-        old_hide = @ctx.hide_locals
-        old_from = @ctx.hide_from
-        @ctx.hide_locals = true
-        @ctx.hide_from = old_hide ? old_from : @ctx.scopes.size - 1
+        old_noloop = @ctx.hide_loop_var
+        @ctx.hide_loop_var = true
         begin
           sub_eval = Evaluator.new(@ctx, @engine)
           sub_eval.render_template(sub_node)
           @out << sub_eval.output.to_s
         ensure
-          @ctx.hide_locals = old_hide
-          @ctx.hide_from = old_from
+          @ctx.hide_loop_var = old_noloop
           @ctx.pop_scope
         end
       else
