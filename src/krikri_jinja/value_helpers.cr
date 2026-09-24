@@ -72,6 +72,15 @@ module KrikriJinja
     end
   end
 
+  # Alternate encoding for python's 1 == True key equivalence, or nil.
+  def self.dict_key_alt(v : AnyValue) : String?
+    case k = v.raw
+    when Bool   then "#{KEY_MARKER}i:#{k ? 1 : 0}"
+    when Int64  then (k == 1 || k == 0) ? "#{KEY_MARKER}b:#{k == 1}" : nil
+    else nil
+    end
+  end
+
   def self.decode_key(k : String) : AnyValue
     return AnyValue.new(k) unless k.starts_with?(KEY_MARKER)
     body = k[1..]
@@ -195,6 +204,14 @@ module KrikriJinja
         i += 1
       end
       x.size <=> y.size
+    elsif x.is_a?(TupleValue) && y.is_a?(TupleValue)
+      i = 0
+      while i < x.items.size && i < y.items.size
+        c = compare_values(x.items[i], y.items[i])
+        return c if c != 0
+        i += 1
+      end
+      x.items.size <=> y.items.size
     else
       raise TemplateError.new("cannot compare #{x.class} and #{y.class}", 0)
     end
