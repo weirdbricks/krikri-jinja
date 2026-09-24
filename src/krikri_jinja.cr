@@ -1,4 +1,5 @@
 require "./krikri_jinja/lexer"
+require "./krikri_jinja/bigmath"
 require "./krikri_jinja/nodes"
 require "./krikri_jinja/parser"
 require "./krikri_jinja/context"

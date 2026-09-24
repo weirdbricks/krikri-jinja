@@ -312,12 +312,14 @@ module KrikriJinja
       @out.to_s
     end
 
-    private def collect_blocks(body : Array(Nodes::Node))
+    private def collect_blocks(body : Array(Nodes::Node), seen : Set(String)? = nil)
+      names = seen || Set(String).new
       body.each do |n|
         case n
         when Nodes::BlockNode
+          raise TemplateError.new("block '#{n.name}' defined twice", n.line) unless names.add?(n.name)
           @ctx.register_block(n.name, n)
-          collect_blocks(n.body)
+          collect_blocks(n.body, names)
         when Nodes::IfNode
           n.branches.each { |_, b| collect_blocks(b) }
           collect_blocks(n.orelse || [] of Nodes::Node)
@@ -404,9 +406,12 @@ module KrikriJinja
     private def render_block_chain(chain : Array(Nodes::BlockNode), i : Int32)
       @ctx.push_scope
       old_hide = @ctx.hide_locals
+      old_from = @ctx.hide_from
       @ctx.hide_locals = true
+      @ctx.hide_from = old_hide ? old_from : @ctx.scopes.size - 1
       if i + 1 < chain.size
         @ctx["super"] = AnyValue.new(KrikriJinja::SimpleCallable.new("super") do |args, _k, _c|
+          raise TemplateError.new("super() takes no arguments", 0) unless args.empty?
           render_block_chain(chain, i + 1)
           AnyValue.new(Markup.new(""))
         end)
@@ -415,6 +420,7 @@ module KrikriJinja
         render_nodes(chain[i].body)
       ensure
         @ctx.hide_locals = old_hide
+        @ctx.hide_from = old_from
         @ctx.pop_scope
       end
     end
@@ -517,7 +523,7 @@ module KrikriJinja
           node.filter_kwargs.each { |k, e| kwargs[k] = eval(e) }
           rendered = stringify(f.call(AnyValue.new(Markup.new(rendered)), args, kwargs, @ctx))
         end
-        @ctx[node.targets.first] = AnyValue.new(rendered)
+        @ctx[node.targets.first] = @ctx.autoescape ? AnyValue.new(Markup.new(rendered)) : AnyValue.new(rendered)
         return
       end
       value = eval(node.expr)
@@ -605,13 +611,16 @@ module KrikriJinja
         # macro definitions stay private to the included template.
         @ctx.push_scope
         old_hide = @ctx.hide_locals
+        old_from = @ctx.hide_from
         @ctx.hide_locals = true
+        @ctx.hide_from = old_hide ? old_from : @ctx.scopes.size - 1
         begin
           sub_eval = Evaluator.new(@ctx, @engine)
           sub_eval.render_template(sub_node)
           @out << sub_eval.output.to_s
         ensure
           @ctx.hide_locals = old_hide
+          @ctx.hide_from = old_from
           @ctx.pop_scope
         end
       else
@@ -764,7 +773,7 @@ module KrikriJinja
         y = as_int(b)
         if x && y
           if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
-            big_add(x.to_s, y.to_s)
+            KrikriJinja.big_add(x.to_s, y.to_s)
           else
             x + y
           end
@@ -855,7 +864,7 @@ module KrikriJinja
           begin
             return x ** y
           rescue OverflowError
-            return big_pow(x, y)
+            return KrikriJinja.big_pow(x, y)
           end
         else
           return x.to_f64 ** y
@@ -864,107 +873,6 @@ module KrikriJinja
       (a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)) ** (b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0))
     end
 
-    # Decimal-string bignum: needed when Int64 pow overflows (Python has
-    # arbitrary-precision ints).
-    private def big_pow(base : Int64, exp : Int64) : String
-      r = "1"
-      b = base.to_s
-      e = exp
-      while e > 0
-        r = big_mul(r, b) if e & 1 == 1
-        b = big_mul(b, b)
-        e >>= 1
-      end
-      r
-    end
-
-    private def big_add(a : String, b : String) : String
-      na = a.starts_with?('-')
-      nb = b.starts_with?('-')
-      da = a.lstrip('-')
-      db = b.lstrip('-')
-      if na == nb
-        sum = [] of Int32
-        i = da.size - 1
-        j = db.size - 1
-        carry = 0
-        while i >= 0 || j >= 0 || carry > 0
-          t = carry
-          t += da[i].to_i if i >= 0
-          t += db[j].to_i if j >= 0
-          sum << t % 10
-          carry = t // 10
-          i -= 1
-          j -= 1
-        end
-        mag = sum.reverse.join
-        mag = mag.sub(/\A0+(?=\d)/, "")
-        na ? "-#{mag}" : mag
-      else
-        neg = big_cmp(da, db) < 0
-        big = neg ? db : da
-        small = neg ? da : db
-        diff = [] of Int32
-        i = big.size - 1
-        j = small.size - 1
-        borrow = 0
-        while i >= 0
-          t = big[i].to_i - borrow
-          t -= small[j].to_i if j >= 0
-          if t < 0
-            t += 10
-            borrow = 1
-          else
-            borrow = 0
-          end
-          diff << t
-          i -= 1
-          j -= 1
-        end
-        mag = diff.reverse.join.sub(/\A0+(?=\d)/, "")
-        mag = "0" if mag.empty?
-        (neg ^ na) ? "-#{mag}" : mag
-      end
-    end
-
-    private def big_cmp(a : String, b : String) : Int32
-      return a.size <=> b.size unless a.size == b.size
-      a <=> b
-    end
-
-    private def big_mul(a : String, b : String) : String
-      neg = false
-      if a.starts_with?('-')
-        neg = !neg
-        a = a[1..]
-      end
-      if b.starts_with?('-')
-        neg = !neg
-        b = b[1..]
-      end
-      digits = Array(Int32).new(a.size + b.size, 0)
-      a.chars.reverse.each_with_index do |ca, i|
-        next if ca == '0'
-        da = ca - '0'
-        b.chars.reverse.each_with_index do |cb, j|
-          digits[i + j] += da * (cb - '0')
-        end
-      end
-      carry = 0
-      digits.each_index do |i|
-        t = digits[i] + carry
-        digits[i] = t % 10
-        carry = t // 10
-      end
-      s = String.build do |io|
-        digits.reverse_each do |d|
-          io << d
-        end
-      end
-      s = s.lstrip('0')
-      s = "1" if s.empty?
-      neg ? "-#{s}" : s
-    end
 
     private def negate(v : AnyV) : AnyV
       case v
@@ -1009,7 +917,10 @@ module KrikriJinja
       value = eval(expr.target)
       t = BUILTIN_TESTS[expr.name]? ||
           raise TemplateError.new("unknown test #{expr.name.inspect}", expr.line)
-      args = expr.args.map { |a| eval(a) }
+      args = expr.args.flat_map do |a|
+        v = eval(a)
+        v.raw.is_a?(TupleValue) ? v.raw.as(TupleValue).items : [v]
+      end
       kwargs = eval_kwargs(expr.kwargs)
       result = t.call(value, args, kwargs, @ctx)
       expr.negated ? !result : result
