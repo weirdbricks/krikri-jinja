@@ -41,7 +41,7 @@ module KrikriJinja
     property sink : ::IO
 
     def initialize(@items, @body : Array(Nodes::Node), @ctx : Context, @engine : Engine,
-                   @targets : Array(String), @parent = nil, @depth = 1, @sink : IO = IO::Memory.new)
+                   @targets : Array(TargetSpec), @parent = nil, @depth = 1, @sink : IO = IO::Memory.new)
     end
 
     def length : Int64
@@ -115,13 +115,14 @@ module KrikriJinja
     end
 
     def call(args : Array(AnyValue), kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
-      ctx.push_scope
+      work = @closure
+      work.push_scope
       begin
         remaining_args = args.size > @params.size ? args[@params.size..] : [] of AnyValue
-        ctx["varargs"] = AnyValue.new(remaining_args)
+        work["varargs"] = AnyValue.new(remaining_args)
         remaining_kwargs = kwargs.dup
         @params.each { |(pname, _)| remaining_kwargs.delete(pname) }
-        ctx["kwargs"] = AnyValue.new(remaining_kwargs)
+        work["kwargs"] = AnyValue.new(remaining_kwargs)
         @params.each_with_index do |(pname, default), i|
           value = if i < args.size
                     args[i]
@@ -132,15 +133,15 @@ module KrikriJinja
                   else
                     AnyValue.new(nil)
                   end
-          ctx[pname] = value
+          work[pname] = value
         end
-        if (caller_val = ctx["__caller__"]?) && !ctx.has_key?("caller")
-          ctx["caller"] = caller_val
+        if (caller_val = ctx["__caller__"]?) && !work.has_key?("caller")
+          work["caller"] = caller_val
         end
-        rendered = Evaluator.new(ctx).render_nodes_to_string(@body)
+        rendered = Evaluator.new(work).render_nodes_to_string(@body)
         AnyValue.new(Markup.new(rendered))
       ensure
-        ctx.pop_scope
+        work.pop_scope
       end
     end
   end
@@ -151,6 +152,9 @@ module KrikriJinja
     end
 
     def call(args : Array(AnyValue), _kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
+      if args.size != @params.size
+        raise TemplateError.new("macro takes not more than #{@params.size} argument(s)", 0)
+      end
       ctx.push_scope
       begin
         ctx["caller"] = AnyValue.new(self)
@@ -164,18 +168,28 @@ module KrikriJinja
     end
   end
 
-  def self.assign_targets(ctx : Context, targets : Array(String), value : AnyValue)
-    if targets.size == 1
-      ctx[targets[0]] = value
+  def self.assign_targets(ctx : Context, targets : Array(TargetSpec), value : AnyValue)
+    if targets.size == 1 && targets[0].children.nil?
+      ctx[targets[0].name] = value
     else
-      unpacked : Array(AnyValue) = case raw = value.raw
-                                   when Array then raw
-                                   when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
-                                   else raise TemplateError.new("cannot unpack #{raw.class}", 0)
-                                   end
-      raise TemplateError.new("too many values to unpack", 0) if unpacked.size < targets.size
-      targets.each_with_index { |t, i| ctx[t] = unpacked[i] }
+      assign_one(ctx, targets.size == 1 ? targets[0] : TargetSpec.new("", targets), value)
     end
+  end
+
+  def self.assign_one(ctx : Context, target : TargetSpec, value : AnyValue)
+    if target.children.nil?
+      ctx[target.name] = value
+      return
+    end
+    unpacked : Array(AnyValue) = case raw = value.raw
+                                 when Array then raw
+                                 when TupleValue then raw.items
+                                 when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
+                                 else raise TemplateError.new("cannot unpack #{raw.class}", 0)
+                                 end
+    kids = target.children.not_nil!
+    raise TemplateError.new("too many values to unpack", 0) if unpacked.size != kids.size
+    kids.each_with_index { |t, i| assign_one(ctx, t, unpacked[i]) }
   end
 
   class Engine
@@ -268,6 +282,7 @@ module KrikriJinja
       has_extends = node.body.any? { |n| n.is_a?(Nodes::ExtendsNode) }
       if has_extends
         # follow the inheritance chain to the root parent
+        chain_bodies = [node.body]
         current_body = node.body
         while true
           parent_idx = current_body.index { |n| n.is_a?(Nodes::ExtendsNode) }.not_nil!
@@ -278,6 +293,17 @@ module KrikriJinja
           collect_blocks(parent.body)
           break unless parent.body.any? { |n| n.is_a?(Nodes::ExtendsNode) }
           current_body = parent.body
+          chain_bodies << current_body
+        end
+        # Child/ancestor module-level statements (sets, macros, imports) run
+        # even though only the root parent's markup renders.
+        chain_bodies.each do |b|
+          b.each do |n|
+            case n
+            when Nodes::SetNode, Nodes::MacroNode, Nodes::ImportNode, Nodes::DoNode
+              render_node(n)
+            end
+          end
         end
         render_nodes(parent.body)
       else
@@ -338,11 +364,8 @@ module KrikriJinja
         render_set(node)
       when Nodes::BlockNode
         blocks = @ctx.blocks[node.name]?
-        if blocks && !blocks.empty?
-          render_nodes(blocks.first.body)
-        else
-          render_nodes(node.body)
-        end
+        chain = blocks && !blocks.empty? ? blocks : [node]
+        render_block_chain(chain, 0)
       when Nodes::MacroNode
         @ctx[node.name] = AnyValue.new(MacroCallable.new(node.name, node.params, node.body, @ctx))
       when Nodes::CallNode
@@ -378,6 +401,24 @@ module KrikriJinja
       end
     end
 
+    private def render_block_chain(chain : Array(Nodes::BlockNode), i : Int32)
+      @ctx.push_scope
+      old_hide = @ctx.hide_locals
+      @ctx.hide_locals = true
+      if i + 1 < chain.size
+        @ctx["super"] = AnyValue.new(KrikriJinja::SimpleCallable.new("super") do |args, _k, _c|
+          render_block_chain(chain, i + 1)
+          AnyValue.new(Markup.new(""))
+        end)
+      end
+      begin
+        render_nodes(chain[i].body)
+      ensure
+        @ctx.hide_locals = old_hide
+        @ctx.pop_scope
+      end
+    end
+
     private def render_output(node : Nodes::OutputNode)
       value = eval(node.expr)
       s = if value.raw.is_a?(Markup)
@@ -397,6 +438,8 @@ module KrikriJinja
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
                                 when Nil    then [] of AnyValue
+                                when Undefined then [] of AnyValue
+                                when GeneratorValue then raw.items
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
                                 end
 
@@ -420,7 +463,7 @@ module KrikriJinja
       if node.recursive
         parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopCallable))
         loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out)
-        @ctx.push_scope
+        @ctx.push_scope(true)
         begin
           items.each_with_index do |item, i|
             loop_obj.index = i
@@ -440,8 +483,8 @@ module KrikriJinja
       end
 
       parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopObject))
-      loop_obj = LoopObject.new(items, 0, parent: parent_loop, depth: (parent_loop.try(&.depth) || 0) + 1)
-      @ctx.push_scope
+      loop_obj = LoopObject.new(items, 0, parent: nil, depth: 1)
+      @ctx.push_scope(true)
       begin
         items.each_with_index do |item, i|
           assign_targets(node.targets, item)
@@ -459,24 +502,21 @@ module KrikriJinja
       end
     end
 
-    private def assign_targets(targets : Array(String), value : AnyValue)
-      if targets.size == 1
-        @ctx[targets[0]] = value
-      else
-        unpacked : Array(AnyValue) = case raw = value.raw
-                                     when Array then raw
-                                     when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
-                                     when TupleValue then raw.items
-                                     else raise TemplateError.new("cannot unpack #{raw.class}", 0)
-                                     end
-        raise TemplateError.new("too many values to unpack", 0) if unpacked.size < targets.size
-        targets.each_with_index { |t, i| @ctx[t] = unpacked[i] }
-      end
+    private def assign_targets(targets : Array(TargetSpec), value : AnyValue)
+      KrikriJinja.assign_targets(@ctx, targets, value)
     end
 
     private def render_set(node : Nodes::SetNode)
       if body = node.body
         rendered = render_nodes_to_string(body)
+        if fname = node.filter_name
+          f = BUILTIN_FILTERS[fname]? ||
+              raise TemplateError.new("unknown filter #{fname.inspect}", node.line)
+          args = node.filter_args.map { |a| eval(a) }
+          kwargs = {} of String => AnyValue
+          node.filter_kwargs.each { |k, e| kwargs[k] = eval(e) }
+          rendered = stringify(f.call(AnyValue.new(Markup.new(rendered)), args, kwargs, @ctx))
+        end
         @ctx[node.targets.first] = AnyValue.new(rendered)
         return
       end
@@ -485,12 +525,10 @@ module KrikriJinja
         case target
         when Nodes::GetattrNode
           obj = eval(target.obj)
-          if obj.raw.is_a?(Hash)
-            obj.raw.as(Hash)[target.attr] = value
-          elsif obj.raw.is_a?(Namespace)
+          if obj.raw.is_a?(Namespace)
             obj.raw.as(Namespace).data[target.attr] = value
           else
-            raise TemplateError.new("cannot set attribute on #{obj.raw.class}", node.line)
+            raise TemplateError.new("cannot assign attribute on non-namespace object", node.line)
           end
         when Nodes::GetitemNode
           obj = eval(target.obj)
@@ -509,7 +547,8 @@ module KrikriJinja
         if node.targets.size == 1
           @ctx[node.targets[0]] = value
         else
-          items = value.raw.as?(Array) || raise TemplateError.new("cannot unpack set target", node.line)
+          items = value.raw.as?(Array) || (value.raw.as?(TupleValue).try(&.items)) ||
+                  raise TemplateError.new("cannot unpack set target", node.line)
           node.targets.each_with_index { |t, i| @ctx[t] = items[i]? || AnyValue.new(nil) }
         end
       end
@@ -533,12 +572,13 @@ module KrikriJinja
 
     private def render_filter_block(node : Nodes::FilterBlockNode)
       rendered = render_nodes_to_string(node.body)
-      filter_node = node.filter.as(Nodes::FilterNode)
-      f = BUILTIN_FILTERS[filter_node.name]? ||
-          raise TemplateError.new("unknown filter #{filter_node.name.inspect}", node.line)
-      args = filter_node.args.map { |a| eval(a) }
-      kwargs = eval_kwargs(filter_node.kwargs)
-      @out << stringify(f.call(AnyValue.new(Markup.new(rendered)), args, kwargs, @ctx))
+      @ctx.push_scope
+      @ctx["__filter_block__"] = AnyValue.new(Markup.new(rendered))
+      begin
+        @out << stringify(eval(node.filter))
+      ensure
+        @ctx.pop_scope
+      end
     end
 
     private def render_include(node : Nodes::IncludeNode)
@@ -559,11 +599,27 @@ module KrikriJinja
         return if node.ignore_missing
         raise TemplateError.new("template #{name.inspect} not found", node.line)
       end
-      sub_ctx = node.with_context ? @ctx : Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape)
       sub_node = Parser.parse(source)
-      sub_eval = Evaluator.new(sub_ctx, @engine)
-      sub_eval.render_template(sub_node)
-      @out << sub_eval.output.to_s
+      if node.with_context
+        # Rendered with the surrounding context minus loop locals; sets and
+        # macro definitions stay private to the included template.
+        @ctx.push_scope
+        old_hide = @ctx.hide_locals
+        @ctx.hide_locals = true
+        begin
+          sub_eval = Evaluator.new(@ctx, @engine)
+          sub_eval.render_template(sub_node)
+          @out << sub_eval.output.to_s
+        ensure
+          @ctx.hide_locals = old_hide
+          @ctx.pop_scope
+        end
+      else
+        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape)
+        sub_eval = Evaluator.new(sub_ctx, @engine)
+        sub_eval.render_template(sub_node)
+        @out << sub_eval.output.to_s
+      end
     end
 
     private def render_import(node : Nodes::ImportNode)
@@ -571,14 +627,21 @@ module KrikriJinja
              raise TemplateError.new("import expects a template name", node.line)
       source = @ctx.loader.try(&.get_source(name))
       raise TemplateError.new("template #{name.inspect} not found", node.line) unless source
-      sub_ctx = Context.new({} of String => AnyValue, @ctx.loader, @ctx.autoescape)
+      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape)
+      if node.context
+        # {% import ... with context %}: the imported module resolves names
+        # against the importing template's visible (non-loop) variables.
+        @ctx.scopes.reverse_each do |scope|
+          scope.each { |k, v| sub_ctx.scopes[0][k] = v unless sub_ctx.scopes[0].has_key?(k) }
+        end
+      end
       sub_node = Parser.parse(source)
       collect_module_exports(sub_node.body, sub_ctx)
       mod = sub_ctx.scopes[0].dup
       if node.from_import
-        node.names.each { |n| @ctx[n] = mod[n]? || AnyValue.new(nil) }
+        node.names.each { |(src, alias_name)| @ctx[alias_name] = mod[src]? || AnyValue.new(nil) }
       else
-        node.names.each { |n| @ctx[n] = AnyValue.new(mod) }
+        node.names.each { |(_src, alias_name)| @ctx[alias_name] = AnyValue.new(mod) }
       end
     end
 
@@ -606,11 +669,11 @@ module KrikriJinja
       when Nodes::ListExprNode
         AnyValue.new(expr.items.map { |i| eval(i) })
       when Nodes::TupleExprNode
-        AnyValue.new(expr.items.map { |i| eval(i) })
+        AnyValue.new(TupleValue.new(expr.items.map { |i| eval(i) }))
       when Nodes::DictExprNode
         h = {} of String => AnyValue
         expr.keys.each_with_index do |k, i|
-          h[stringify(eval(k))] = eval(expr.values[i])
+          h[KrikriJinja.dict_key(eval(k))] = eval(expr.values[i])
         end
         AnyValue.new(h)
       when Nodes::BinOpNode
@@ -619,6 +682,12 @@ module KrikriJinja
         case expr.op
         when "not" then AnyValue.new(!truthy?(eval(expr.operand)))
         when "-" then AnyValue.new(negate(eval(expr.operand).raw))
+        when "+"
+          raw = eval(expr.operand).raw
+          case raw
+          when Int64, Float64, Bool then AnyValue.new(raw)
+          else raise TemplateError.new("bad operand type for unary +: #{raw.class}", expr.line)
+          end
         else eval(expr.operand)
         end
       when Nodes::CompareNode
@@ -629,7 +698,7 @@ module KrikriJinja
         if truthy?(eval(expr.test))
           eval(expr.truthy)
         else
-          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(nil)
+          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(Undefined.new)
         end
       when Nodes::FilterNode
         eval_filter(expr)
@@ -675,69 +744,104 @@ module KrikriJinja
       end
     end
 
+    private def as_int(v : AnyV) : Int64?
+      case v
+      when Int64 then v
+      when Bool then v ? 1i64 : 0i64
+      else nil
+      end
+    end
+
     private def add(a : AnyV, b : AnyV) : AnyV
       case {a, b}
-      when {Int64, Int64} then a + b
       when {Float64, Float64} then a + b
       when {Int64, Float64} then a.to_f64 + b
       when {Float64, Int64} then a + b.to_f64
       when {String, String} then a + b
       when {Array, Array} then a + b
-      else raise TemplateError.new("unsupported operands for +: #{a.class} and #{b.class}", 0)
+      else
+        x = as_int(a)
+        y = as_int(b)
+        if x && y
+          if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
+            big_add(x.to_s, y.to_s)
+          else
+            x + y
+          end
+        elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
+          (x ? x.to_f64 : a.as(Float64)) + (y ? y.to_f64 : b.as(Float64))
+        else
+          raise TemplateError.new("unsupported operands for +: #{a.class} and #{b.class}", 0)
+        end
       end
     end
 
     private def subtract(a : AnyV, b : AnyV) : AnyV
-      case {a, b}
-      when {Int64, Int64} then a - b
-      when {Float64, Float64} then a - b
-      when {Int64, Float64} then a.to_f64 - b
-      when {Float64, Int64} then a - b.to_f64
-      else raise TemplateError.new("unsupported operands for -: #{a.class} and #{b.class}", 0)
+      x = as_int(a)
+      y = as_int(b)
+      if x && y
+        x - y
+      elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
+        (x ? x.to_f64 : a.as(Float64)) - (y ? y.to_f64 : b.as(Float64))
+      else
+        raise TemplateError.new("unsupported operands for -: #{a.class} and #{b.class}", 0)
       end
     end
 
     private def multiply(a : AnyV, b : AnyV) : AnyV
       case {a, b}
-      when {Int64, Int64} then a * b
-      when {Float64, Float64} then a * b
-      when {Int64, Float64} then a.to_f64 * b
-      when {Float64, Int64} then a * b.to_f64
-      when {String, Int64} then a * b
-      when {Int64, String} then b * a
-      else raise TemplateError.new("unsupported operands for *: #{a.class} and #{b.class}", 0)
+      when {String, Int64} then b <= 0 ? "" : a * b
+      when {Int64, String} then a <= 0 ? "" : b * a
+      when {Array, Int64}
+        out_arr = [] of AnyValue
+        (b > 0 ? b : 0).times { out_arr.concat(a) }
+        out_arr
+      when {Int64, Array}
+        out_arr = [] of AnyValue
+        (a > 0 ? a : 0).times { out_arr.concat(b) }
+        out_arr
+      else
+        x = as_int(a)
+        y = as_int(b)
+        if x && y
+          x * y
+        elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
+          (x ? x.to_f64 : a.as(Float64)) * (y ? y.to_f64 : b.as(Float64))
+        else
+          raise TemplateError.new("unsupported operands for *: #{a.class} and #{b.class}", 0)
+        end
       end
     end
 
     private def divide(a : AnyV, b : AnyV) : AnyV
-      x = a.as?(Float64) || a.as?(Int64).try(&.to_f64)
-      y = b.as?(Float64) || b.as?(Int64).try(&.to_f64)
+      x = a.as?(Float64) || as_int(a).try(&.to_f64)
+      y = b.as?(Float64) || as_int(b).try(&.to_f64)
       raise TemplateError.new("unsupported operand for /", 0) unless x && y
       raise TemplateError.new("division by zero", 0) if y == 0.0
       x / y
     end
 
     private def floor_divide(a : AnyV, b : AnyV) : AnyV
-      if a.is_a?(Int64) && b.is_a?(Int64)
-        raise TemplateError.new("integer division or modulo by zero", 0) if b == 0
-        a // b
+      if (x = as_int(a)) && (y = as_int(b))
+        raise TemplateError.new("integer division or modulo by zero", 0) if y == 0
+        x // y
       else
-        x = a.as?(Float64) || a.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
-        y = b.as?(Float64) || b.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        x = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        y = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
         raise TemplateError.new("division by zero", 0) if y == 0.0
         (x / y).floor.to_f64
       end
     end
 
     private def modulo(a : AnyV, b : AnyV) : AnyV
-      if a.is_a?(Int64) && b.is_a?(Int64)
-        raise TemplateError.new("integer division or modulo by zero", 0) if b == 0
-        r = a % b
-        r = r + b.abs if r != 0 && (r < 0) != (b < 0)
+      if (x = as_int(a)) && (y = as_int(b))
+        raise TemplateError.new("integer division or modulo by zero", 0) if y == 0
+        r = x % y
+        r = r + y.abs if r != 0 && (r < 0) != (y < 0)
         r
       else
-        x = a.as?(Float64) || a.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
-        y = b.as?(Float64) || b.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        x = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        y = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
         raise TemplateError.new("division by zero", 0) if y == 0.0
         r = x % y
         r = r + y.abs if r != 0 && (r < 0) != (y < 0)
@@ -746,17 +850,127 @@ module KrikriJinja
     end
 
     private def power(a : AnyV, b : AnyV) : AnyV
-      if a.is_a?(Int64) && b.is_a?(Int64) && b >= 0
-        a ** b
-      else
-        (a.as?(Float64) || a.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)) ** (b.as?(Float64) || b.as?(Int64).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0))
+      if (x = as_int(a)) && (y = as_int(b))
+        if y >= 0
+          begin
+            return x ** y
+          rescue OverflowError
+            return big_pow(x, y)
+          end
+        else
+          return x.to_f64 ** y
+        end
       end
+      (a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)) ** (b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0))
+    end
+
+    # Decimal-string bignum: needed when Int64 pow overflows (Python has
+    # arbitrary-precision ints).
+    private def big_pow(base : Int64, exp : Int64) : String
+      r = "1"
+      b = base.to_s
+      e = exp
+      while e > 0
+        r = big_mul(r, b) if e & 1 == 1
+        b = big_mul(b, b)
+        e >>= 1
+      end
+      r
+    end
+
+    private def big_add(a : String, b : String) : String
+      na = a.starts_with?('-')
+      nb = b.starts_with?('-')
+      da = a.lstrip('-')
+      db = b.lstrip('-')
+      if na == nb
+        sum = [] of Int32
+        i = da.size - 1
+        j = db.size - 1
+        carry = 0
+        while i >= 0 || j >= 0 || carry > 0
+          t = carry
+          t += da[i].to_i if i >= 0
+          t += db[j].to_i if j >= 0
+          sum << t % 10
+          carry = t // 10
+          i -= 1
+          j -= 1
+        end
+        mag = sum.reverse.join
+        mag = mag.sub(/\A0+(?=\d)/, "")
+        na ? "-#{mag}" : mag
+      else
+        neg = big_cmp(da, db) < 0
+        big = neg ? db : da
+        small = neg ? da : db
+        diff = [] of Int32
+        i = big.size - 1
+        j = small.size - 1
+        borrow = 0
+        while i >= 0
+          t = big[i].to_i - borrow
+          t -= small[j].to_i if j >= 0
+          if t < 0
+            t += 10
+            borrow = 1
+          else
+            borrow = 0
+          end
+          diff << t
+          i -= 1
+          j -= 1
+        end
+        mag = diff.reverse.join.sub(/\A0+(?=\d)/, "")
+        mag = "0" if mag.empty?
+        (neg ^ na) ? "-#{mag}" : mag
+      end
+    end
+
+    private def big_cmp(a : String, b : String) : Int32
+      return a.size <=> b.size unless a.size == b.size
+      a <=> b
+    end
+
+    private def big_mul(a : String, b : String) : String
+      neg = false
+      if a.starts_with?('-')
+        neg = !neg
+        a = a[1..]
+      end
+      if b.starts_with?('-')
+        neg = !neg
+        b = b[1..]
+      end
+      digits = Array(Int32).new(a.size + b.size, 0)
+      a.chars.reverse.each_with_index do |ca, i|
+        next if ca == '0'
+        da = ca - '0'
+        b.chars.reverse.each_with_index do |cb, j|
+          digits[i + j] += da * (cb - '0')
+        end
+      end
+      carry = 0
+      digits.each_index do |i|
+        t = digits[i] + carry
+        digits[i] = t % 10
+        carry = t // 10
+      end
+      s = String.build do |io|
+        digits.reverse_each do |d|
+          io << d
+        end
+      end
+      s = s.lstrip('0')
+      s = "1" if s.empty?
+      neg ? "-#{s}" : s
     end
 
     private def negate(v : AnyV) : AnyV
       case v
       when Int64 then -v
       when Float64 then -v
+      when Bool then v ? -1i64 : 0i64
       else raise TemplateError.new("cannot negate #{v.class}", 0)
       end
     end
@@ -803,15 +1017,21 @@ module KrikriJinja
 
     private def eval_getattr(expr : Nodes::GetattrNode) : AnyValue
       obj = eval(expr.obj)
+      if obj.raw.is_a?(Undefined)
+        raise TemplateError.new("'missing' is undefined", expr.line)
+      end
       get_attr(obj, expr.attr) || AnyValue.new(Undefined.new)
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
       obj = eval(expr.obj)
+      if obj.raw.is_a?(Undefined)
+        raise TemplateError.new("'missing' is undefined", expr.line)
+      end
       key = eval(expr.key)
       result = case raw = obj.raw
                when Hash
-                 k = key.raw.as?(String) || stringify(key)
+                 k = KrikriJinja.dict_key(key)
                  raw[k]?
                when Array
                  idx = key.raw.as?(Int64) || raise TemplateError.new("list indices must be integers", expr.line)
@@ -837,6 +1057,7 @@ module KrikriJinja
       step = expr.step ? (eval(expr.step.not_nil!).raw.as?(Int64) || 1i64) : 1i64
       size_hint = (obj.raw.is_a?(String) ? obj.raw.as(String).size : obj.raw.as?(Array).try(&.size)) || 0
       default_start = step < 0 ? (size_hint - 1).to_i64 : 0i64
+      raise TemplateError.new("slice step cannot be zero", expr.line) if step == 0
       start = expr.start ? (eval(expr.start.not_nil!).raw.as?(Int64) || default_start) : default_start
       stop = expr.stop ? eval(expr.stop.not_nil!).raw.as?(Int64) : nil
 
@@ -847,6 +1068,9 @@ module KrikriJinja
       when Array
         idxs = slice_indices(raw.size, start, stop, step)
         AnyValue.new(idxs.map { |i| raw[i] })
+      when TupleValue
+        idxs = slice_indices(raw.items.size, start, stop, step)
+        AnyValue.new(TupleValue.new(idxs.map { |i| raw.items[i] }))
       else
         raise TemplateError.new("cannot slice #{raw.class}", expr.line)
       end
