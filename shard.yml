@@ -1,0 +1,14 @@
+name: krikri-jinja
+version: 0.1.0
+
+description: |
+  Clean-room Jinja2 template engine in Crystal.
+  Implemented from the Jinja2 Template Designer / Developer documentation,
+  not from any existing Jinja2 implementation's source.
+
+authors:
+  - Krikri Contributors
+
+license: MIT
+
+crystal: ">= 1.10.0"
