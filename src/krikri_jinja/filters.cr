@@ -209,23 +209,28 @@ module KrikriJinja
   end
   register_filter("round") do |v, args, kwargs, _c|
     precision = (args[0]?.try(&.raw.as?(Int64)) || kwargs["precision"]?.try(&.raw.as?(Int64)) || 0i64)
-    method = kwargs["method"]?.try(&.raw.as?(String)) || args[1]?.try(&.raw.as?(String)) || "common"
-    x = v.raw.as?(Float64) || v.raw.as?(Int64).try(&.to_f64) ||
-        raise TemplateError.new("round expects a number", 0)
-    result = case method
-             when "ceil" then (x * 10.0 ** precision).ceil / 10.0 ** precision
-             when "floor" then (x * 10.0 ** precision).floor / 10.0 ** precision
-             else
-               if precision >= 0
-                 sprintf("%.*f", precision, x).to_f64
-               else
-                 factor = 10.0 ** (-precision)
-                 (sprintf("%.0f", x / factor).to_f64 * factor)
-               end
-             end
-    if precision < 0 && v.raw.is_a?(Int64)
-      AnyValue.new(result.to_i64)
+    if iv = v.raw.as?(Int64)
+      # python round(int, n) returns an int; n >= 0 leaves it unchanged
+      if precision >= 0
+        AnyValue.new(iv)
+      else
+        factor = 10.0 ** (-precision)
+        AnyValue.new((sprintf("%.0f", iv / factor).to_f64 * factor).to_i64)
+      end
     else
+      method = kwargs["method"]?.try(&.raw.as?(String)) || args[1]?.try(&.raw.as?(String)) || "common"
+      x = v.raw.as?(Float64) || raise TemplateError.new("round expects a number", 0)
+      result = case method
+               when "ceil" then (x * 10.0 ** precision).ceil / 10.0 ** precision
+               when "floor" then (x * 10.0 ** precision).floor / 10.0 ** precision
+               else
+                 if precision >= 0
+                   sprintf("%.*f", precision, x).to_f64
+                 else
+                   factor = 10.0 ** (-precision)
+                   (sprintf("%.0f", x / factor).to_f64 * factor)
+                 end
+               end
       AnyValue.new(result)
     end
   end
@@ -791,8 +796,10 @@ module KrikriJinja
                start = args[1]?.try(&.raw.as?(Int64)) || 0i64
                stop = args[2]?.try(&.raw.as?(Int64)) || s.size.to_i64
                region = s[(start < 0 ? s.size + start : start)..(stop < 0 ? s.size + stop - 1 : stop - 1)].to_s
-               n = 0
-               if !sub.empty?
+               if sub.empty?
+                 n = region.size + 1
+               else
+                 n = 0
                  pos = 0
                  while (idx = region.index(sub, pos))
                    n += 1
@@ -806,7 +813,9 @@ module KrikriJinja
                sub = stringify(args[0])
                start = args[1]?.try(&.raw.as?(Int64)) || 0i64
                stop = args[2]?.try(&.raw.as?(Int64)) || s.size.to_i64
-               region = s[(start < 0 ? s.size + start : start)...(stop < 0 ? s.size + stop : stop)].to_s
+               lo = (start < 0 ? s.size + start : start).clamp(0, s.size)
+               hi = (stop < 0 ? s.size + stop : stop).clamp(0, s.size)
+               region = lo <= hi ? s[lo...hi] : ""
                pos = name == "rfind" ? region.rindex(sub) : region.index(sub)
                offset = (start < 0 ? s.size + start : start)
                if name == "index"
@@ -1043,9 +1052,23 @@ module KrikriJinja
     when Array, String
       case name
       when "upper"
-        raw.is_a?(String) ? AnyValue.new(raw.upcase) : nil
+        if raw.is_a?(String)
+          val_up = AnyValue.new(raw.upcase)
+          AnyValue.new(KrikriJinja::SimpleCallable.new("upper") do |_a, _k, _c|
+            val_up.as(AnyValue)
+          end)
+        else
+          nil
+        end
       when "lower"
-        raw.is_a?(String) ? AnyValue.new(raw.downcase) : nil
+        if raw.is_a?(String)
+          val_dn = AnyValue.new(raw.downcase)
+          AnyValue.new(KrikriJinja::SimpleCallable.new("lower") do |_a, _k, _c|
+            val_dn.as(AnyValue)
+          end)
+        else
+          nil
+        end
       when "reverse"
         raw.is_a?(String) ? AnyValue.new(raw.reverse) : nil
       when "first"
@@ -1163,6 +1186,15 @@ module KrikriJinja
     when Float64 then format_float(v).to_s(io)
     when String
       json_string(io, v)
+    when Markup
+      json_string(io, v.value)
+    when TupleValue
+      io << "["
+      v.items.each_with_index do |item, i|
+        io << ", " if i > 0
+        json_write(io, item.raw, indent, depth + 1)
+      end
+      io << "]"
     when Array
       io << "["
       if indent && !v.empty?
@@ -1182,12 +1214,22 @@ module KrikriJinja
     when Hash
       # Python json.dumps(sort_keys=True) as configured by Jinja's tojson.
       entries = v.to_a.sort! { |a, b| a[0] <=> b[0] }
+      key_str = ->(k : String) : String do
+        dec = KrikriJinja.decode_key(k).raw
+        case dec
+        when Int64 then dec.to_s
+        when Bool  then dec ? "true" : "false"
+        when Nil   then "null"
+        when Float64 then KrikriJinja.format_float(dec)
+        else dec.as(String)
+        end
+      end
       io << "{"
       if indent && !entries.empty?
         entries.each_with_index do |(k, x), i|
           io << "," if i > 0
           io << '\n' << (" " * (indent * (depth + 1)))
-          json_string(io, k)
+          json_string(io, key_str.call(k))
           io << ": "
           json_write(io, x.raw, indent, depth + 1)
         end
@@ -1195,7 +1237,7 @@ module KrikriJinja
       else
         entries.each_with_index do |(k, x), i|
           io << ", " if i > 0
-          json_string(io, k)
+          json_string(io, key_str.call(k))
           io << ": "
           json_write(io, x.raw, indent, depth + 1)
         end
