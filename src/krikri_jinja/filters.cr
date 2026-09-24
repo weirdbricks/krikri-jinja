@@ -54,13 +54,7 @@ module KrikriJinja
     items = case raw = v.raw
             when Array then raw
             when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
-            when Hash
-              raw.map do |k, x|
-                pair = Array(AnyValue).new(2)
-                pair << AnyValue.new(k)
-                pair << x
-                AnyValue.new(pair)
-              end
+            when Hash then raw.keys.map { |k| AnyValue.new(k) }
             else
               raise TemplateError.new("cannot convert #{raw.class} to list", 0)
             end
@@ -77,7 +71,7 @@ module KrikriJinja
   end
   register_filter("default") do |v, args, kwargs, _c|
     boolean_default = (kwargs["boolean"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
-    if !undefined?(v) && !(boolean_default && !truthy?(v))
+    if !v.raw.is_a?(Undefined) && !(boolean_default && !truthy?(v))
       v
     else
       args[0]? || AnyValue.new("")
@@ -116,9 +110,15 @@ module KrikriJinja
     else
       attr = kwargs["attribute"]?.try(&.raw.as?(String))
       if attr
-        items = items.map { |i| get_attr(i, attr) || AnyValue.new(nil) }
+        best = items.reduce do |a, b|
+          ka = get_attr(a, attr) || AnyValue.new(nil)
+          kb = get_attr(b, attr) || AnyValue.new(nil)
+          compare_values_safe(ka, kb) <= 0 ? a : b
+        end
+        AnyValue.wrap(best)
+      else
+        AnyValue.wrap(items.reduce { |a, b| compare_values_safe(a, b) <= 0 ? a : b })
       end
-      AnyValue.wrap(items.reduce { |a, b| compare_values_safe(a, b) <= 0 ? a : b })
     end
   end
   register_filter("max") do |v, _args, kwargs, _c|
@@ -128,9 +128,15 @@ module KrikriJinja
     else
       attr = kwargs["attribute"]?.try(&.raw.as?(String))
       if attr
-        items = items.map { |i| get_attr(i, attr) || AnyValue.new(nil) }
+        best = items.reduce do |a, b|
+          ka = get_attr(a, attr) || AnyValue.new(nil)
+          kb = get_attr(b, attr) || AnyValue.new(nil)
+          compare_values_safe(ka, kb) >= 0 ? a : b
+        end
+        AnyValue.wrap(best)
+      else
+        AnyValue.wrap(items.reduce { |a, b| compare_values_safe(a, b) >= 0 ? a : b })
       end
-      AnyValue.wrap(items.reduce { |a, b| compare_values_safe(a, b) >= 0 ? a : b })
     end
   end
   register_filter("sort") do |v, _args, kwargs, _c|
@@ -165,7 +171,7 @@ module KrikriJinja
     if attr
       items = items.map { |i| get_attr(i, attr) || AnyValue.new(nil) }
     end
-    start = (args[0]? || AnyValue.new(0i64)).raw
+    start = (kwargs["start"]? || args[0]? || AnyValue.new(0i64)).raw
     AnyValue.new(items.reduce(start) { |acc, item| numeric_add(acc, item.raw) })
   end
   register_filter("abs") do |v, _a, _k, _c|
@@ -180,11 +186,10 @@ module KrikriJinja
     method = kwargs["method"]?.try(&.raw.as?(String)) || args[1]?.try(&.raw.as?(String)) || "common"
     x = v.raw.as?(Float64) || v.raw.as?(Int64).try(&.to_f64) ||
         raise TemplateError.new("round expects a number", 0)
-    factor = 10.0 ** precision
     result = case method
-             when "ceil" then (x * factor).ceil / factor
-             when "floor" then (x * factor).floor / factor
-             else (x * factor).round / factor
+             when "ceil" then (x * 10.0 ** precision).ceil / 10.0 ** precision
+             when "floor" then (x * 10.0 ** precision).floor / 10.0 ** precision
+             else sprintf("%.*f", precision, x).to_f64
              end
     AnyValue.new(result)
   end
@@ -220,22 +225,22 @@ module KrikriJinja
   end
   register_filter("indent") do |v, args, kwargs, _c|
     amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 4i64)
-    first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true
+    first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
     prefix = first ? " " * amount : ""
     lines = stringify(v).split('\n')
     lines_out = [prefix + lines[0]]
     lines_out.concat(lines[1..].map { |l| (" " * amount) + l })
-    AnyValue.new(lines_out.join(92.chr))
+    AnyValue.new(lines_out.join('\n'))
   end
   register_filter("striptags") do |v, _a, _k, _c|
     AnyValue.new(stringify(v).gsub(/<[^>]*>/, "").gsub(/\s+/, " ").strip)
   end
   register_filter("urlencode") do |v, _a, _k, _c|
     case raw = v.raw
-    when String then AnyValue.new(URI.encode_www_form(raw.to_s))
+    when String then AnyValue.new(KrikriJinja.percent_encode(raw))
     when Hash
-      AnyValue.new(raw.map { |k, x| "#{URI.encode_www_form(k.to_s)}=#{URI.encode_www_form(x.to_s.to_s)}" }.join("&"))
-    else AnyValue.new(URI.encode_www_form(stringify(v)))
+      AnyValue.new(raw.map { |k, x| "#{KrikriJinja.quote_plus(k.to_s)}=#{KrikriJinja.quote_plus(KrikriJinja.stringify(x))}" }.join("&"))
+    else AnyValue.new(KrikriJinja.percent_encode(stringify(v)))
     end
   end
   register_filter("items") do |v, _a, _k, _c|
@@ -243,15 +248,10 @@ module KrikriJinja
     unless raw.is_a?(Hash)
       raise TemplateError.new("items expects a mapping", 0)
     end
-    AnyValue.new(raw.map do |k, x|
-      pair = Array(AnyValue).new(2)
-      pair << AnyValue.new(k)
-      pair << x
-      AnyValue.new(pair)
-    end)
+    AnyValue.new(raw.map { |k, x| AnyValue.new(TupleValue.new([AnyValue.new(k), x])) })
   end
   register_filter("map") do |v, args, kwargs, c|
-    attr = kwargs["attribute"]?.try(&.raw.as?(String)) || args[0]?.try(&.raw.as?(String))
+    attr = kwargs["attribute"]?.try(&.raw.as?(String))
     result = if attr
                default = kwargs["default"]?
                to_iterable(v).map do |item|
@@ -264,7 +264,7 @@ module KrikriJinja
                extra = args[0..]
                to_iterable(v).select { |item| t.call(item, extra, kwargs, c) }
              else
-               fname = kwargs["filter"]?.try(&.raw.as?(String))
+               fname = kwargs["filter"]?.try(&.raw.as?(String)) || args[0]?.try(&.raw.as?(String))
                raise TemplateError.new("map requires attribute or filter", 0) unless fname
                f = BUILTIN_FILTERS[fname]?
                raise TemplateError.new("unknown filter #{fname.inspect} in map", 0) unless f
@@ -324,11 +324,12 @@ module KrikriJinja
     base = items.size // count
     extra = items.size % count
     offset = 0
+    first_len = base + (extra > 0 ? 1 : 0)
     count.times do |i|
       n = base + (i < extra ? 1 : 0)
-      part = items[offset, n]
-      if fill_with
-        part = part + Array(AnyValue).new(count - part.size) { fill_with }
+      part = offset < items.size ? items[offset, Math.min(n, items.size - offset)] : [] of AnyValue
+      if fill_with && part.size < first_len
+        part = part + Array(AnyValue).new(first_len - part.size) { fill_with }
       end
       out_arr << AnyValue.new(part)
       offset += n
@@ -337,7 +338,11 @@ module KrikriJinja
   end
   register_filter("attr") do |v, args, _k, _c|
     name = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("attr requires a name", 0)
-    get_attr(v, name) || AnyValue.new(nil)
+    if v.raw.is_a?(Hash) || v.raw.is_a?(Undefined)
+      AnyValue.new(Undefined.new)
+    else
+      get_attr(v, name) || AnyValue.new(Undefined.new)
+    end
   end
   register_filter("tojson") do |v, _a, kwargs, _c|
     indent = kwargs["indent"]?.try(&.raw.as?(Int64))
@@ -386,18 +391,13 @@ module KrikriJinja
     by = kwargs["by"]?.try(&.raw.as?(String)) || "key"
     reverse = (kwargs["reverse"]? || AnyValue.new(false)).raw == true
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
-    entries = raw.map do |k, x|
-      pair = Array(AnyValue).new(2)
-      pair << AnyValue.new(k)
-      pair << x
-      AnyValue.new(pair)
-    end
+    entries = raw.map { |k, x| AnyValue.new(TupleValue.new([AnyValue.new(k), x])) }
     entries.sort! do |a, b|
-      ka = a.raw.as(Array)[0]
-      kb = b.raw.as(Array)[0]
+      ka = a.raw.as(TupleValue).items[0]
+      kb = b.raw.as(TupleValue).items[0]
       if by == "value"
-        ka = a.raw.as(Array)[1]
-        kb = b.raw.as(Array)[1]
+        ka = a.raw.as(TupleValue).items[1]
+        kb = b.raw.as(TupleValue).items[1]
       end
       cmp = begin
         compare_values(ka, kb)
@@ -474,7 +474,7 @@ module KrikriJinja
     end
   end
 
-  private def self.replace_limited(s : String, old : String, new : String, count : Int64) : String
+  def self.replace_limited(s : String, old : String, new : String, count : Int64) : String
     return s.gsub(old, new) if count == Int64::MAX
     pos = 0
     done = 0
@@ -493,6 +493,7 @@ module KrikriJinja
     when String then raw.size.to_i64
     when Array  then raw.size.to_i64
     when Hash   then raw.size.to_i64
+    when TupleValue then raw.items.size.to_i64
     else raise TemplateError.new("object of type #{raw.class} has no length", 0)
     end
   end
@@ -501,6 +502,8 @@ module KrikriJinja
     case raw = v.raw
     when Array then raw
     when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
+    when Markup then raw.value.chars.map { |c| AnyValue.new(c.to_s) }
+    when TupleValue then raw.items
     when Hash then raw.keys.map { |k| AnyValue.new(k) }
     else raise TemplateError.new("#{raw.class} object is not iterable", 0)
     end
@@ -550,6 +553,91 @@ module KrikriJinja
     end
   end
 
+  # Bound string methods (Python str.*), callable from templates.
+  private def self.string_method(s : String, name : String) : AnyValue
+    impl = case name
+           when "replace"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               old = stringify(args[0])
+               new = stringify(args[1]? || AnyValue.new(""))
+               if count = args[2]?.try(&.raw.as?(Int64))
+                 AnyValue.new(KrikriJinja.replace_limited(s, old, new, count))
+               else
+                 AnyValue.new(s.gsub(old, new))
+               end
+             end
+           when "split", "rsplit"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               sep = args[0]?.try(&.raw.as?(String))
+               parts = if sep.nil? || sep.empty?
+                         s.split(/[ \t\r\n]+/).reject(&.empty?)
+                       elsif name == "rsplit"
+                         # no native rsplit with maxsplit; approximate for maxsplit<=0
+                         s.split(sep)
+                       else
+                         s.split(sep)
+                       end
+               maxsplit = args[1]?.try(&.raw.as?(Int64))
+               if maxsplit && maxsplit >= 0 && name == "split" && sep && !sep.empty?
+                 parts = s.split(sep, (maxsplit + 1).to_i32)
+               end
+               AnyValue.new(parts.map { |p| AnyValue.new(p) })
+             end
+           when "startswith", "endswith"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               prefix = stringify(args[0])
+               ok = name == "startswith" ? s.starts_with?(prefix) : s.ends_with?(prefix)
+               AnyValue.new(ok)
+             end
+           when "strip", "lstrip", "rstrip"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               chars = args[0]?.try(&.raw.as?(String)) || " \t\r\n"
+               r = case name
+                   when "strip" then s.strip(chars)
+                   when "lstrip" then s.lstrip(chars)
+                   else s.rstrip(chars)
+                   end
+               AnyValue.new(r)
+             end
+           when "count"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               sub = stringify(args[0])
+               AnyValue.new(s.count(sub).to_i64)
+             end
+           when "find", "index"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               sub = stringify(args[0])
+               pos = s.index(sub)
+               if name == "find"
+                 AnyValue.new((pos || -1).to_i64)
+               elsif pos
+                 AnyValue.new(pos.to_i64)
+               else
+                 raise TemplateError.new("substring not found", 0)
+               end
+             end
+           when "join"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               items = to_iterable(args[0]? || AnyValue.new(nil))
+               AnyValue.new(items.map { |i| stringify(i) }.join(s))
+             end
+           when "format"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               AnyValue.new(KrikriJinja.py_format(s, args))
+             end
+           when "zfill"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               width = args[0]?.try(&.raw.as?(Int64)) || 0i64
+               sign = s.starts_with?("-") ? "-" : ""
+               digits = s.lstrip('-')
+               AnyValue.new(sign + digits.rjust(width - sign.size, '0'))
+             end
+           else
+             raise TemplateError.new("unknown method #{name}", 0)
+           end
+    AnyValue.new(KrikriJinja::SimpleCallable.new(name, &impl))
+  end
+
   def self.get_attr(obj : AnyValue, name : String?) : AnyValue?
     return nil unless name
     case raw = obj.raw
@@ -590,8 +678,6 @@ module KrikriJinja
     when Namespace then raw.data[name]?
     when Array, String
       case name
-      when "length", "count"
-        AnyValue.new(length_of(obj))
       when "upper"
         raw.is_a?(String) ? AnyValue.new(raw.upcase) : nil
       when "lower"
@@ -623,8 +709,11 @@ module KrikriJinja
         else
           nil
         end
-      when "strip"
-        raw.is_a?(String) ? AnyValue.new(raw.strip) : nil
+      when "replace"
+        raw.is_a?(String) ? string_method(raw, name) : nil
+      when "split", "rsplit", "startswith", "endswith", "strip", "lstrip",
+           "rstrip", "count", "find", "index", "join", "format", "zfill"
+        raw.is_a?(String) ? string_method(raw, name) : nil
       when "keys"
         raw.is_a?(Hash) ? AnyValue.new(raw.keys.map { |k| AnyValue.new(k) }) : nil
       when "values"

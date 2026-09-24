@@ -30,9 +30,30 @@ module KrikriJinja
     end
   end
 
+  # A Python tuple value (produced by dictsort/items); stringifies with
+  # parentheses and supports iteration/unpacking/indexing like an array.
+  class TupleValue
+    getter items : Array(AnyValue)
+
+    def initialize(@items)
+    end
+  end
+
+  # Marker for undefined variables, mirroring Jinja's Undefined behavior:
+  # stringifies to "", is falsy, fails `is none`, and raises on operations.
+  class Undefined
+    def ==(other : Undefined) : Bool
+      true
+    end
+
+    def ==(other) : Bool
+      false
+    end
+  end
+
   # Anything a filter/test/global function may return.
   alias AnyV = Nil | Bool | Int64 | Float64 | String | Array(AnyValue) |
-               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable
+               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue
 
   # Marker for callable values (macros and host-provided functions).
   abstract class Callable

@@ -8,8 +8,8 @@ module KrikriJinja
     BUILTIN_TESTS[name] = block
   end
 
-  register_test("defined") { |v, _a, _k, _c| !undefined?(v) }
-  register_test("undefined") { |v, _a, _k, _c| undefined?(v) }
+  register_test("defined") { |v, _a, _k, _c| !v.raw.is_a?(Undefined) }
+  register_test("undefined") { |v, _a, _k, _c| v.raw.is_a?(Undefined) }
   register_test("none") { |v, _a, _k, _c| v.raw.nil? }
   register_test("even") { |v, _a, _k, _c| int_of(v) % 2 == 0 }
   register_test("odd") { |v, _a, _k, _c| int_of(v) % 2 == 1 }

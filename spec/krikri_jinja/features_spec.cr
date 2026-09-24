@@ -67,9 +67,9 @@ describe KrikriJinja do
       KrikriJinja.render("#{t}{{ m(1, 2, 3, 4, extra='x') }}").should eq("1|2|3,4|x")
     end
 
-    it "exposes name and caller" do
-      t = "{% macro m() %}{{ name }}{% endmacro %}{{ m() }}"
-      KrikriJinja.render(t).should eq("m")
+    it "leaves name undefined inside macro body (jinja parity)" do
+      t = "{% macro m() %}[{{ name }}]{% endmacro %}{{ m() }}"
+      KrikriJinja.render(t).should eq("[]")
     end
 
     it "passes call-tag parameters to the caller body" do
@@ -100,7 +100,7 @@ describe KrikriJinja do
   describe "more filters" do
     it "dictsort" do
       ctx = KrikriJinja.context({"d" => {"b" => 2, "a" => 1}})
-      KrikriJinja.render("{{ d | dictsort | map('first') | join(',') }}", ctx).should eq("a,b")
+      KrikriJinja.render("{% for k, v in d | dictsort %}{{ k }}{% endfor %}", ctx).should eq("ab")
     end
 
     it "filesizeformat" do
@@ -148,7 +148,7 @@ describe KrikriJinja do
 
     it "supports sameas" do
       KrikriJinja.render("{{ x is sameas none }} {{ 1 is sameas 1 }} {{ 'a' is sameas 'b' }}")
-        .should eq("True True False")
+        .should eq("False True False")
     end
 
     it "supports block modifiers without error" do

@@ -640,10 +640,22 @@ module KrikriJinja
       tok = current
       if tok.type == TokenType::Op && {"-", "+"}.includes?(tok.value)
         advance
-        operand = parse_unary
-        return tok.value == "-" ? Nodes::UnaryOpNode.new("-", operand, tok.line) : operand
+        operand = parse_unary_no_filter
+        expr = tok.value == "-" ? Nodes::UnaryOpNode.new("-", operand, tok.line).as(ExprNode) : operand
+        # filters bind tighter than unary operators: -4.7|abs == abs(-4.7)
+        return parse_postfix_from(expr, expr.line)
       end
       parse_postfix
+    end
+
+    private def parse_unary_no_filter : Nodes::ExprNode
+      tok = current
+      if tok.type == TokenType::Op && {"-", "+"}.includes?(tok.value)
+        advance
+        operand = parse_unary_no_filter
+        return tok.value == "-" ? Nodes::UnaryOpNode.new("-", operand, tok.line).as(ExprNode) : operand
+      end
+      parse_postfix_no_filter
     end
 
     private def parse_postfix : Nodes::ExprNode
@@ -651,7 +663,12 @@ module KrikriJinja
       parse_postfix_from(expr, expr.line)
     end
 
-    private def parse_postfix_from(expr : ExprNode, line : Int32) : ExprNode
+    private def parse_postfix_no_filter : Nodes::ExprNode
+      expr = parse_primary
+      parse_postfix_from(expr, expr.line, allow_filter: false)
+    end
+
+    private def parse_postfix_from(expr : ExprNode, line : Int32, allow_filter = true) : ExprNode
       loop do
         tok = current
         if tok.type == TokenType::Op && tok.value == "."
@@ -673,7 +690,7 @@ module KrikriJinja
         elsif tok.type == TokenType::Op && tok.value == "("
           args, kwargs = parse_arg_list
           expr = Nodes::CallExprNode.new(expr, args, kwargs, line)
-        elsif tok.type == TokenType::Op && tok.value == "|"
+        elsif tok.type == TokenType::Op && tok.value == "|" && allow_filter
           advance
           name_tok = current
           unless name_tok.type == TokenType::Ident

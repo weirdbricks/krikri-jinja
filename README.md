@@ -80,8 +80,37 @@ engine = KrikriJinja::Engine.new(KrikriJinja::FileSystemLoader.new("templates"))
 engine.render_string("{% extends 'base.html' %}")
 ```
 
+## Differential testing against real Jinja2
+
+`compare/` renders a shared case corpus with **both** real Jinja2 (via
+python3 + jinja2) and this engine, then diffs the outputs byte for byte:
+
+```bash
+./compare/run.sh
+# total: 140  identical: 140  both-error: 0  divergent: 0
+```
+
+- `compare/gen_cases.py` generates `cases.json` (140 cases: literals,
+  arithmetic, filters, tests, statements, whitespace control, raw,
+  inheritance/includes/imports, autoescape, recursive loops)
+- `compare/render.py` renders with real Jinja2 (same environment defaults:
+  `trim_blocks=false`, `keep_trailing_newline=false`, default `Undefined`)
+- `compare/render.cr` renders with krikri-jinja
+- `compare/compare.py` diffs; both-error counts as compatible (the two
+  engines use different exception vocabularies), one-ok-one-error or any
+  output difference is a divergence
+
+This harness found and fixed: undefined rendering as "" (not "None"),
+filters binding tighter than unary minus, `map('filtername')` dispatch,
+`min`/`max(attribute=)` returning the item, Python `round` semantics via
+`sprintf`, string methods (`replace`, `split`, ...), tuple repr for
+`dictsort`/`items`, Python-style `urlencode`, `slice` padding to the
+longest column, `sum(start=)`, `indent(2, true)`, scientific-notation
+literals, and `{% raw %}` scanning past embedded `{%`.
+
 ## Development
 
 ```bash
-crystal spec   # run the suite
+crystal spec        # run the unit/integration suite (70 specs)
+./compare/run.sh    # differential test against real Jinja2 (140 cases)
 ```

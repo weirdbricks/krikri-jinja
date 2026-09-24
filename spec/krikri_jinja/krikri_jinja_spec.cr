@@ -135,7 +135,7 @@ describe KrikriJinja do
 
   describe "filters" do
     it "applies builtin string filters" do
-      KrikriJinja.render("{{ 'hi'.upper }} {{ 'HI'.lower }} {{ ' hi ' | trim }} {{ 'ab'.length }}")
+      KrikriJinja.render("{{ 'hi'.upper }} {{ 'HI'.lower }} {{ ' hi ' | trim }} {{ 'ab' | length }}")
         .should eq("HI hi hi 2")
     end
 
@@ -177,7 +177,7 @@ describe KrikriJinja do
     end
 
     it "rounds and formats" do
-      KrikriJinja.render("{{ 42.55 | round(1) }} {{ '%s=%d' | format('x', 5) }}").should eq("42.6 x=5")
+      KrikriJinja.render("{{ 42.55 | round(1) }} {{ '%s=%d' | format('x', 5) }}").should eq("42.5 x=5")
     end
   end
 
