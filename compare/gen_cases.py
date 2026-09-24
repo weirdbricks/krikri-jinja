@@ -975,7 +975,7 @@ add("string with both quotes", "{{ 'a\"b\'c' }}")
 add("string with newline escape", "{{ 'a\\nb' }}")
 add("string with unicode escape", "{{ 'a\\u00e9b' }}")
 add("nested quotes in dict", "{{ {'a': 'x', 'b': \"y\"} }}")
-add("comment in expression", "{{ 1 + # c }}", )
+add("comment in expression", "{{ 1 + # c }}")
 add("trailing comma dict", "{{ {'a': 1,} }}")
 add("trailing comma list", "{{ [1, 2,] }}")
 add("unterminated string error", "{{ 'abc }}")
@@ -1007,6 +1007,161 @@ add("namespace init with kwargs", "{% set ns = namespace(a=1, b=2) %}{{ ns.a }}{
 add("namespace attr getitem", "{% set ns = namespace(v=3) %}{{ ns['v'] }}")
 add("dict from pairs", "{{ dict([('a', 1), ('b', 2)]) | dictsort | join(',') }}")
 add("lipsum markup length", "{{ lipsum() | length > 0 }}")
+
+
+# ================= edge-case expansion (round 5) =================
+
+# --- urlize edge -----------------------------------------------------------
+add("urlize trailing punct", "{{ 'go to http://x.com, now' | urlize }}")
+add("urlize paren", "{{ '(see http://x.com)' | urlize }}")
+add("urlize https", "{{ 'https://secure.io' | urlize }}")
+add("urlize multiple", "{{ 'a http://x.com b www.y.io c' | urlize }}")
+add("urlize href attr", "{{ '<a href=\'http://x.com\'>x</a>' | urlize }}")
+
+# --- filter arg validation and errors --------------------------------------
+add("batch negative size", "{{ [1,2] | batch(-1) | length }}")
+add("slice zero count", "{{ [1,2] | slice(0) | length }}")
+add("round huge precision", "{{ 1.5 | round(50) }}")
+add("int garbage base", "{{ 'zz' | int(base=36) }}")
+add("float nan literal", "{{ none if false else 1 }}")
+add("replace no args", "{{ 'a' | replace }}")
+add("tojson set", "{{ {1, 2} | tojson }}")
+add("min mixed error", "{{ [1, 'a'] | min }}")
+add("max mixed error", "{{ [1, 'a'] | max }}")
+add("sort mixed error", "{{ [1, 'a'] | sort }}")
+add("dictsort on list", "{{ [1] | dictsort }}")
+add("join on int", "{{ 5 | join(',') }}")
+add("batch on int", "{{ 5 | batch(2) | length }}")
+add("first on int", "{{ 5 | first }}")
+add("list on int", "{{ 5 | list }}")
+add("urlencode int", "{{ 5 | urlencode }}")
+add("indent int", "{{ 5 | indent(2) }}")
+add("reverse int", "{{ 5 | reverse }}")
+
+# --- container operations ---------------------------------------------------
+add("list compare eq", "{{ [1, 2] == [1, 2] }} {{ [1] == [2] }} {{ [1] == 'x' }}")
+add("dict compare eq", "{{ {'a': 1} == {'a': 1} }} {{ {'a': 1} == {'a': 2} }}")
+add("list compare lt", "{{ [1, 2] < [2] }} {{ [2] < [1, 2] }}")
+add("tuple compare eq", "{{ (1, 2) == (1, 2) }} {{ (1,) == (1, 2) }}")
+add("string compare", "{{ 'a' < 'b' }} {{ 'b' < 'a' }} {{ 'A' < 'a' }}")
+add("nested in tuple", "{{ 2 in (1, 2) }}")
+add("dictsort tuple repr", "{{ {'a': 1} | dictsort }}")
+add("items tuple repr", "{{ {'a': 1} | items | list }}")
+
+# --- nested filters and tests -----------------------------------------------
+add("filter on filter result", "{{ 'ab' | upper | lower | reverse }}")
+add("test on filter result", "{{ 'abc' | upper is eq 'ABC' }}")
+add("filter in for iter", "{% for x in 'ab' | list %}{{ x }}{% endfor %}")
+add("filter in if cond", "{% if 'a' | upper is eq 'A' %}y{% endif %}")
+add("map filter with args", "{{ ['ab', 'c'] | map('center', 3, '-') | join('|') }}")
+add("map test with args", "{{ [1, 2, 3, 4] | map('even') | join(',') }}")
+add("selectattr with test args", "{{ users | selectattr('age', 'gt', 2) | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "a", "age": 3}, {"n": "b", "age": 1}]})
+add("reject test on undefined attr", "{{ users | rejectattr('zz', 'defined') | length }}", {"users": [{"n": "a"}]})
+add("groupby numeric keys", "{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+    {"items": [{"k": 2, "v": 1}, {"k": 10, "v": 2}]})
+add("groupby none values", "{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+    {"items": [{"k": None, "v": 1}, {"k": None, "v": 2}]})
+add("unique numbers", "{{ [1, 1.0, 2, true] | unique | join(',') }}")
+add("sort stability", "{{ [{'k': 1, 'v': 'a'}, {'k': 1, 'v': 'b'}, {'k': 0, 'v': 'c'}] | sort(attribute='k') | map(attribute='v') | join(',') }}")
+
+# --- undefined chains ---------------------------------------------------------
+add("undefined nested in loop", "{% for x in [missing] %}{{ x | default('d') }}{% endfor %}")
+add("undefined arithmetic default", "{{ (missing + 1) | default('d') }}")
+add("undefined is defined test", "{{ missing.x is defined }} {{ missing is defined }}")
+add("undefined bool int", "{{ missing == false }} {{ missing == 0 }}")
+add("undefined truthiness if", "{% if missing %}a{% endif %}|")
+add("undefined in dict", "{{ missing in {'a': 1} }}")
+add("loop var after loop", "{% for i in [1] %}{% endfor %}{{ loop | default('d') }}")
+
+# --- inheritance: round 4 -------------------------------------------------------
+add("block nested in for in block", "{% extends 'base.html' %}{% block b %}{% for i in [1,2] %}{{ i }}{% endfor %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}"})
+add("extends then include", "{% extends 'base.html' %}{% block b %}{% include 'p.html' %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "p.html": "P"})
+add("import inside block", "{% extends 'base.html' %}{% block b %}{% import 'm.html' as m %}{{ m.v }}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "m.html": "{% set v = 'V' %}"})
+add("macro defined in parent", "{% extends 'base.html' %}{% block b %}{{ mm() }}{% endblock %}", templates={
+    "base.html": "{% macro mm() %}MM{% endmacro %}{% block b %}{% endblock %}"})
+add("set in parent visible in child block", "{% extends 'base.html' %}{% block b %}{{ v }}{% endblock %}", templates={
+    "base.html": "{% set v = 'PV' %}{% block b %}{% endblock %}"})
+add("super with args error", "{% extends 'base.html' %}{% block b %}{{ super(1) }}{% endblock %}", templates={
+    "base.html": "{% block b %}B{% endblock %}"})
+add("super in non-block context", "{{ super() }}")
+add("block name reuse", "{% block b %}1{% endblock %}{% block b %}2{% endblock %}")
+
+# --- macros: round 4 --------------------------------------------------------------
+add("macro caller default param", "{% macro m() %}{{ caller() }}{% endmacro %}{% call m() %}C{% endcall %}")
+add("macro shadow loop var", "{% for m in [1] %}{% macro m2() %}{{ m }}{% endmacro %}{{ m2() }}{% endfor %}")
+add("macro uses global", "{% macro m() %}{{ range(2) | join(',') }}{% endmacro %}{{ m() }}")
+add("macro recursive via variable", "{% macro outer() %}{{ inner() }}{% endmacro %}{% macro inner() %}I{% endmacro %}{{ outer() }}")
+add("macro arg expression", "{% macro m(a) %}{{ a * 2 }}{% endmacro %}{{ m(1 + 2) }}")
+add("macro param shadowing global", "{% macro m(range) %}{{ range }}{% endmacro %}{{ m(7) }}")
+
+# --- whitespace: round 4 -------------------------------------------------------------
+add("trim on else", "{% if false %}a\n{% else -%}\nb\n{% endif %}", trim_blocks=True)
+add("marker between text", "a\n  {%- if true %}b{% endif %}\n  c")
+add("raw with var markers", "{{- 'x' -}}{% raw %}y{% endraw %}")
+add("nested if markers deep", "{%- if true -%}\n{%- if true -%}X{%- endif -%}\n{%- endif -%}")
+add("set marker inline", "a {%- set x = 1 -%} b{{ x }}")
+add("lstrip nested blocks", "{% if true %}\n  {% if true %}\n    x\n  {% endif %}\n{% endif %}", lstrip_blocks=True, trim_blocks=True)
+
+# --- lexer: round 3 --------------------------------------------------------------------
+add("string backslash at end", "{{ 'a\\' }}")
+add("string triple quote attempt", "{{ 'a' 'b' }}")
+add("int with underscores", "{{ 1_000 }}")
+add("float leading dot", "{{ .5 }}")
+add("float trailing e", "{{ 1e }}")
+add("negative exponent literal", "{{ 1e-2 }} {{ 1E+2 }}")
+add("adjacent operators", "{{ 1 - -2 }} {{ 1 -+2 }}")
+add("comment only template", "{# just a comment #}|")
+add("comment unclosed error", "{# c }}x")
+add("percent in text", "100% done")
+add("brace in text", "a { b } c")
+add("lone opener", "a { b")
+add("deep nesting", "{% if true %}{% if true %}{% if true %}x{% endif %}{% endif %}{% endif %}")
+add("deep nested lists", "{{ [[[[1]]]] }}")
+add("deep nested dicts", "{{ {'a': {'b': {'c': {'d': 1}}}} | tojson }}")
+
+# --- autoescape: round 4 ------------------------------------------------------------------
+add("escape urlize", "{{ 'http://x.com?a=<b>' | urlize }}", autoescape=True)
+add("markup through concat", "{{ ('<a>' | safe) ~ ('<b>') }}", autoescape=True)
+add("escape in loop", "{% for x in ['<a>', '<b>'] %}{{ x }}{% endfor %}", autoescape=True)
+add("escape conditional markup", "{{ ('<a>' | safe) if true else 'b' }}", autoescape=True)
+add("escape macro caller", "{% macro m() %}{{ caller() }}{% endmacro %}{% call m() %}<x>{% endcall %}", autoescape=True)
+add("escape set block", "{% set x %}<y>{% endset %}{{ x }}", autoescape=True)
+add("escape with filter block", "{% filter upper %}<x>{% endfilter %}", autoescape=True)
+
+# --- numbers: round 4 -----------------------------------------------------------------------
+add("int edge values", "{{ 0 }} {{ -0 }} {{ 2147483647 }} {{ 2147483648 }}")
+add("float precision", "{{ 0.1 }} {{ 0.2 }} {{ 0.1 + 0.2 }}")
+add("float compare epsilon", "{{ 0.1 + 0.2 == 0.3 }} {{ abs(0.1 + 0.2 - 0.3) < 1e-9 }}")
+add("division always float", "{{ 4 / 2 }} {{ 1 / 3 }}")
+add("modulo one", "{{ 5 % 1 }} {{ 5.5 % 1 }}")
+add("pow large float", "{{ 2.0 ** 10 }} {{ 10 ** 2.0 }}")
+add("sum overflow error", "{{ [9223372036854775807, 1] | sum }}")
+add("negative zero int ops", "{{ -0 + 0 }} {{ -0 * 5 }}")
+add("bool modulo", "{{ true % false }}")
+add("float to int truncation", "{{ 1.9 | int }} {{ -1.9 | int }} {{ 1.5 | round(0) | int }}")
+
+# --- statements: round 4 ----------------------------------------------------------------------
+add("if with filter test combo", "{% if [1,2,3] | length is gt 2 %}y{% endif %}")
+add("set conditional", "{% set x = 'a' if true else 'b' %}{{ x }}")
+add("set in loop visible after", "{% set last = none %}{% for i in [1,2,3] %}{% set last = i %}{% endfor %}{{ last }}")
+add("with nested loop var", "{% with x = 10 %}{% for x in [1] %}{{ x }}{% endfor %}{{ x }}{% endwith %}")
+add("for over dict keys sorted", "{% for k in {'b': 1, 'a': 2} | dictsort %}{{ k[0] }}{% endfor %}")
+add("elif chain precedence", "{% if 1 == 1 %}a{% elif 2 == 2 %}b{% endif %}")
+add("do with filter", "{% set x = 1 %}{% do x.__nothing__ %}{{ x }}")
+
+# --- globals: round 3 ---------------------------------------------------------------------------
+add("range bool arg", "{% for i in range(true) %}{{ i }}{% endfor %}")
+add("range huge step", "{% for i in range(0, 10, 100) %}{{ i }}{% endfor %}")
+add("cycler one item", "{% set c = cycler('a') %}{{ c.next() }}{{ c.next() }}")
+add("cycler empty error", "{% set c = cycler() %}{{ c.next() }}")
+add("joiner no args", "{% set j = joiner() %}{{ j() }}x{{ j() }}")
+add("namespace positional dict", "{% set ns = namespace({'a': 1}) %}{{ ns.a }}")
 
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
