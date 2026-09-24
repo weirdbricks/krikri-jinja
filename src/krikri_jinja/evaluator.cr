@@ -4,6 +4,7 @@ module KrikriJinja
     property index : Int32
     getter depth : Int32
     property parent : LoopObject?
+    property last_changed : AnyValue?
 
     def initialize(@items, @index, @parent = nil, @depth = 1)
     end
@@ -30,6 +31,63 @@ module KrikriJinja
     end
   end
 
+  # Callable `loop` for recursive for-loops: {{ loop(item.children) }}
+  class LoopCallable < Callable
+    getter items : Array(AnyValue)
+    getter depth : Int32
+    property parent : LoopCallable?
+    property index : Int32 = 0
+    property last_changed : AnyValue?
+    property sink : ::IO
+
+    def initialize(@items, @body : Array(Nodes::Node), @ctx : Context, @engine : Engine,
+                   @targets : Array(String), @parent = nil, @depth = 1, @sink : IO = IO::Memory.new)
+    end
+
+    def length : Int64
+      @items.size.to_i64
+    end
+
+    def to_ctx_hash : Hash(String, AnyValue)
+      h = {
+        "index"     => AnyValue.new((@index + 1).to_i64),
+        "index0"    => AnyValue.new(@index.to_i64),
+        "revindex"  => AnyValue.new((@items.size - @index).to_i64),
+        "revindex0" => AnyValue.new((@items.size - @index - 1).to_i64),
+        "first"     => AnyValue.new(@index == 0),
+        "last"      => AnyValue.new(@index == @items.size - 1),
+        "length"    => AnyValue.new(length),
+        "depth"     => AnyValue.new(@depth.to_i64),
+        "depth0"    => AnyValue.new((@depth - 1).to_i64),
+      } of String => AnyValue
+      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(nil)
+      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(nil)
+      h
+    end
+
+    def call(args : Array(AnyValue), _kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
+      first = args[0]?
+      sub = LoopCallable.new(first ? (first.raw.is_a?(Array) ? first.raw.as(Array) : args) : args,
+                             @body, ctx, @engine, @targets, self, @depth + 1, @sink)
+      old_loop = ctx["loop"]?
+      ctx.push_scope
+      begin
+        sub.items.each_with_index do |item, i|
+          sub.index = i
+          KrikriJinja.assign_targets(ctx, @targets, item)
+          ctx["loop"] = AnyValue.new(sub)
+          Evaluator.new(ctx, @engine, @sink).render_nodes(@body)
+        end
+      ensure
+        ctx.pop_scope
+        if old_loop
+          ctx.scopes[0]["loop"] = old_loop
+        end
+      end
+      AnyValue.new(Markup.new(""))
+    end
+  end
+
   # A string produced by a macro call or `|safe`, exempt from escaping.
   class Markup
     getter value : String
@@ -50,6 +108,12 @@ module KrikriJinja
     def call(args : Array(AnyValue), kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
       ctx.push_scope
       begin
+        remaining_args = args.size > @params.size ? args[@params.size..] : [] of AnyValue
+        ctx["varargs"] = AnyValue.new(remaining_args)
+        remaining_kwargs = kwargs.dup
+        @params.each { |(pname, _)| remaining_kwargs.delete(pname) }
+        ctx["kwargs"] = AnyValue.new(remaining_kwargs)
+        ctx["name"] = AnyValue.new(@name)
         @params.each_with_index do |(pname, default), i|
           value = if i < args.size
                     args[i]
@@ -75,14 +139,16 @@ module KrikriJinja
 
   # Caller body passed to macros via {% call %}.
   class CallerCallable < Callable
-    def initialize(@body : Array(Nodes::Node), @ctx : Context)
+    def initialize(@body : Array(Nodes::Node), @ctx : Context, @params : Array(String) = [] of String)
     end
 
     def call(args : Array(AnyValue), _kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
       ctx.push_scope
       begin
         ctx["caller"] = AnyValue.new(self)
-        args.each_with_index { |arg, i| ctx["arg#{i}"] = arg }
+        @params.each_with_index do |pname, i|
+          ctx[pname] = args[i]? || AnyValue.new(nil)
+        end
         AnyValue.new(Markup.new(Evaluator.new(ctx).render_nodes_to_string(@body)))
       ensure
         ctx.pop_scope
@@ -90,11 +156,28 @@ module KrikriJinja
     end
   end
 
+  def self.assign_targets(ctx : Context, targets : Array(String), value : AnyValue)
+    if targets.size == 1
+      ctx[targets[0]] = value
+    else
+      unpacked : Array(AnyValue) = case raw = value.raw
+                                   when Array then raw
+                                   when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
+                                   else raise TemplateError.new("cannot unpack #{raw.class}", 0)
+                                   end
+      raise TemplateError.new("too many values to unpack", 0) if unpacked.size < targets.size
+      targets.each_with_index { |t, i| ctx[t] = unpacked[i] }
+    end
+  end
+
   class Engine
     getter loader : Loader?
     getter globals : Hash(String, AnyValue)
+    getter options : LexerOptions
+    getter autoescape : Bool
 
-    def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV)
+    def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV,
+                   @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false)
       globals = KrikriJinja.default_globals
       user_globals.each { |k, v| globals[k] = AnyValue.wrap(v) }
       @globals = globals
@@ -108,31 +191,41 @@ module KrikriJinja
       render_variables(source, variables)
     end
 
+    # Loads a template by name from the loader and renders it.
+    def render(name : String, variables : Hash(String, AnyV) = {} of String => AnyV) : String
+      render_string(load_source(name), variables)
+    end
+
+    def load_source(name : String) : String
+      source = @loader.try(&.get_source(name))
+      raise TemplateError.new("template #{name.inspect} not found", 0) unless source
+      source
+    end
+
     private def render_variables(source : String, variables)
       ctx = Context.new(@globals.dup, @loader)
+      ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = AnyValue.wrap(v) }
-      node = Parser.parse(source)
+      node = Parser.parse(source, @options)
       Evaluator.new(ctx, self).render_template(node)
     end
 
     def load(name : String) : Nodes::TemplateNode
-      source = @loader.try(&.get_source(name))
-      raise TemplateError.new("template #{name.inspect} not found", 0) unless source
-      Parser.parse(source)
+      Parser.parse(load_source(name), @options)
     end
   end
 
   class Evaluator
     @ctx : Context
     @engine : Engine
-    @out : IO::Memory
+    @out : ::IO
 
-    def initialize(@ctx, engine : Engine? = nil, buf : IO::Memory? = nil)
+    def initialize(@ctx, engine : Engine? = nil, buf : ::IO? = nil)
       @engine = engine || Engine.new
-      @out = buf || IO::Memory.new
+      @out = buf.is_a?(::IO) ? buf : IO::Memory.new
     end
 
-    def output : IO::Memory
+    def output : ::IO
       @out
     end
 
@@ -315,6 +408,28 @@ module KrikriJinja
         return
       end
 
+      if node.recursive
+        parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopCallable))
+        loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out)
+        @ctx.push_scope
+        begin
+          items.each_with_index do |item, i|
+            loop_obj.index = i
+            assign_targets(node.targets, item)
+            @ctx["loop"] = AnyValue.new(loop_obj)
+            render_nodes(node.body)
+          end
+        ensure
+          @ctx.pop_scope
+          if parent_loop.nil?
+            @ctx.delete("loop")
+          else
+            @ctx.scopes[0]["loop"] = AnyValue.new(parent_loop.not_nil!)
+          end
+        end
+        return
+      end
+
       parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopObject))
       loop_obj = LoopObject.new(items, 0, parent: parent_loop, depth: (parent_loop.try(&.depth) || 0) + 1)
       @ctx.push_scope
@@ -350,6 +465,11 @@ module KrikriJinja
     end
 
     private def render_set(node : Nodes::SetNode)
+      if body = node.body
+        rendered = render_nodes_to_string(body)
+        @ctx[node.targets.first] = AnyValue.new(rendered)
+        return
+      end
       value = eval(node.expr)
       if target = node.attr_target
         case target
@@ -388,7 +508,7 @@ module KrikriJinja
     private def render_call(node : Nodes::CallNode)
       if body = node.body
         @ctx.push_scope
-        @ctx["__caller__"] = AnyValue.new(CallerCallable.new(body, @ctx))
+        @ctx["__caller__"] = AnyValue.new(CallerCallable.new(body, @ctx, node.call_params))
         begin
           result = eval(Nodes::CallExprNode.new(node.macro_expr, node.args, node.kwargs, node.line))
           @out << stringify(result)
@@ -412,9 +532,19 @@ module KrikriJinja
     end
 
     private def render_include(node : Nodes::IncludeNode)
-      name = eval(node.template).raw.as?(String) ||
-             raise TemplateError.new("include expects a template name", node.line)
-      source = @ctx.loader.try(&.get_source(name))
+      chosen = eval(node.template)
+      names : Array(String) = case raw = chosen.raw
+                              when String then [raw]
+                              when Array  then raw.compact_map { |n| n.raw.as?(String) }
+                              else raise TemplateError.new("include expects a template name", node.line)
+                              end
+      source : String? = nil
+      name = ""
+      names.each do |candidate|
+        name = candidate
+        source = @ctx.loader.try(&.get_source(candidate))
+        break if source || names.size == 1
+      end
       if source.nil?
         return if node.ignore_missing
         raise TemplateError.new("template #{name.inspect} not found", node.line)
@@ -735,6 +865,8 @@ module KrikriJinja
       kwargs = eval_kwargs(expr.kwargs)
       case raw = func.raw
       when Callable
+        raw.call(args, kwargs, @ctx)
+      when LoopCallable
         raw.call(args, kwargs, @ctx)
       when Markup
         AnyValue.new(raw)

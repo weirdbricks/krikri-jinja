@@ -32,7 +32,7 @@ module KrikriJinja
 
   # Anything a filter/test/global function may return.
   alias AnyV = Nil | Bool | Int64 | Float64 | String | Array(AnyValue) |
-               Hash(String, AnyValue) | Callable | Markup | LoopObject
+               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable
 
   # Marker for callable values (macros and host-provided functions).
   abstract class Callable
@@ -99,6 +99,7 @@ module KrikriJinja
       property targets : Array(String)
       property expr : ExprNode
       property attr_target : ExprNode? # {% set ns.attr = x %}
+      property body : Array(Nodes::Node)? # {% set x %}...{% endset %}
 
       def initialize(@targets, @expr, @attr_target, line : Int32)
         super(line)
@@ -129,9 +130,11 @@ module KrikriJinja
       property args : Array(ExprNode)
       property kwargs : Array(Tuple(String, ExprNode))
       property body : Array(Node)?
+      property call_params : Array(String)
 
       def initialize(@macro_expr, @args, @kwargs, @body, line : Int32)
         super(line)
+        @call_params = [] of String
       end
     end
 

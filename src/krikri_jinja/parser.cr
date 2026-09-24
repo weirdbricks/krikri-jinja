@@ -10,8 +10,8 @@ module KrikriJinja
     def initialize(@tokens : Array(Token))
     end
 
-    def self.parse(source : String) : Nodes::TemplateNode
-      new(Lexer.new(source).tokens).parse_template
+    def self.parse(source : String, options : LexerOptions = LexerOptions.new) : Nodes::TemplateNode
+      new(Lexer.new(source, options).tokens).parse_template
     end
 
     def parse_template : Nodes::TemplateNode
@@ -145,6 +145,13 @@ module KrikriJinja
         value = parse_expression
         expect_block_end
         Nodes::SetNode.new([first_name], value, target, line)
+      elsif accept_block_end
+        # block form: {% set x %}...{% endset %}
+        body, _tag, _ = parse_until(["endset"])
+        value = Nodes::ConstNode.new("__set_block__", line)
+        node = Nodes::SetNode.new(targets_block(first_name), value, nil, line)
+        node.body = body
+        node
       else
         targets = [first_name]
         while accept_op(",")
@@ -157,6 +164,10 @@ module KrikriJinja
       end
     end
 
+    private def targets_block(name : String) : Array(String)
+      [name]
+    end
+
     private def parse_block(line : Int32) : Nodes::BlockNode
       name = current
       unless name.type == TokenType::Ident
@@ -164,6 +175,10 @@ module KrikriJinja
       end
       block_name = name.value
       advance
+      # `scoped` / `required` modifiers are accepted; scoping semantics
+      # are not observable without includes-over-blocks and are ignored.
+      accept_ident("scoped")
+      accept_ident("required")
       expect_block_end
       body, _tag, _ = parse_until(["endblock"])
       Nodes::BlockNode.new(block_name, body, line)
@@ -208,6 +223,19 @@ module KrikriJinja
     end
 
     private def parse_call(line : Int32) : Nodes::CallNode
+      call_params = [] of String
+      if current.type == TokenType::Op && current.value == "("
+        # {% call(x, y) macro() %} - caller body parameter names
+        advance
+        loop do
+          break if accept_op(")")
+          call_params << parse_target_name
+          break if accept_op(")")
+          unless accept_op(",")
+            raise TemplateError.new("expected ',' or ')' in call parameters", current.line)
+          end
+        end
+      end
       parsed = parse_expression
       args, kwargs = if parsed.is_a?(Nodes::CallExprNode)
                        macro_expr = parsed.func
@@ -225,7 +253,9 @@ module KrikriJinja
       else
         expect_block_end
       end
-      Nodes::CallNode.new(macro_expr, args, kwargs, body, line)
+      node = Nodes::CallNode.new(macro_expr, args, kwargs, body, line)
+      node.call_params = call_params
+      node
     end
 
     private def parse_filter_block(line : Int32) : Nodes::FilterBlockNode
@@ -454,14 +484,8 @@ module KrikriJinja
     private def parse_not : Nodes::ExprNode
       line = current.line
       if accept_ident("not")
-        # `not in` is a comparison operator, check next
-        if current.type == TokenType::Ident && current.value == "in"
-          # handled by caller as comparison; backtrack is not possible with a
-          # simple index, but `not in` only appears after an operand, so this
-          # position means `not (in ...)`, which is invalid - error out.
-          raise TemplateError.new("unexpected 'in' after 'not'", line)
-        end
-        return Nodes::UnaryOpNode.new("not", parse_not, line)
+        # `not` binds looser than comparisons: `not a in b` == not (a in b)
+        return Nodes::UnaryOpNode.new("not", parse_compare, line)
       end
       parse_compare
     end

@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.1.0)
+## Status (v0.2.0)
 
 Implemented:
 
@@ -38,13 +38,35 @@ Implemented:
 - Python-style semantics: truthiness, `True == 1`, floor division/modulo
   sign behavior, `None` stringification
 
-Not yet implemented: custom delimiters per-render, `trim_blocks` /
-`lstrip_blocks` / `keep_trailing_newline` controls, `{% raw %}` blocks,
-`{% trans %}`, i18n, `cycle`/`spaceless` tags, custom filter/test
-registration API (filters/tests are plain hashes today), macro `varargs`/
-`kwargs` introspection, `dictsort`, `filesizeformat`, `wordwrap` edge cases,
-autoescape `Markup` round-tripping through filters, and `{% for %}`
-`recursive` body rendering.
+Implemented on top of v0.1.0:
+
+- `{% raw %}` blocks (including `{%- raw -%}` marker forms)
+- Whitespace control: `{{- -}}`, `{%- -%}` markers, `trim_blocks`,
+  `lstrip_blocks`, `keep_trailing_newline` (default false, matching the
+  documented environment default)
+- Custom delimiters per engine (`block_start/end`, `var_start/end`,
+  `comment_start/end`)
+- Recursive `{% for %}` with `{{ loop(children) }}` recursion and
+  `loop.depth`; `loop.cycle(...)` and `loop.changed(...)`
+- Macro introspection: `varargs`, `kwargs`, `name`, `caller`
+- `{% call(x, y) macro() %}` caller-body parameters
+- `{% set x %}...{% endset %}` block form
+- `{% include ['a.html', 'b.html'] %}` fallback lists
+- `not` binds looser than comparisons (`not x in y` == `not (x in y)`)
+- Hex/octal/binary integer literals
+- Filters: `dictsort`, `filesizeformat`, `forceescape`, `center`, `random`,
+  `pprint`, `int(base=)`, `unique(attribute=)`, `format` with full
+  %-conversion support, `Markup`-aware `safe`/`escape` under autoescape
+- Tests: `escaped`, `filter`, `test`, `sameas`
+- `Engine#render(name)` for loader-based rendering, engine-level
+  `autoescape`, and filter/test registration by mutating
+  `BUILTIN_FILTERS` / `BUILTIN_TESTS`
+
+Not yet implemented: `{% trans %}` / i18n (out of scope), `spaceless`,
+`debug` tag, custom filter/test classes beyond hash registration,
+`StrictUndefined` semantics (undefined is nil-based), `truncate`
+`nowrap`, `groupby` secondary sort guarantees, and `wordwrap`
+`break_long_words` tuning.
 
 ## Usage
 
