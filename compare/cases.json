@@ -6670,5 +6670,401 @@
   "name": "empty dict truthiness",
   "template": "{% if {} %}a{% else %}b{% endif %} {% if [0] %}c{% endif %}",
   "data": {}
+ },
+ {
+  "name": "wordwrap wrapstring custom",
+  "template": "{{ 'a b c' | wordwrap(4, true, '--') }}",
+  "data": {}
+ },
+ {
+  "name": "wordwrap single long",
+  "template": "{{ 'abcdef' | wordwrap(3) }}",
+  "data": {}
+ },
+ {
+  "name": "wordwrap exact fit",
+  "template": "{{ 'ab cd' | wordwrap(5) }}|",
+  "data": {}
+ },
+ {
+  "name": "wordwrap empty",
+  "template": "{{ '' | wordwrap(5) }}|",
+  "data": {}
+ },
+ {
+  "name": "truncate false killwords space",
+  "template": "{{ 'a b c d' | truncate(6, false, '~', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate leeway boundary",
+  "template": "{{ 'abcdefgh' | truncate(5, true, '...', 3) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate unicode",
+  "template": "{{ 'h\u00e9llo w\u00f6rld' | truncate(7, true, '\u2026', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode tilde",
+  "template": "{{ '~' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode parens",
+  "template": "{{ '(a)' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode apostrophe",
+  "template": "{{ \"'\" | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode star",
+  "template": "{{ '*' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode exclaim",
+  "template": "{{ '!' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode dict empty",
+  "template": "{{ {} | urlencode }}|",
+  "data": {}
+ },
+ {
+  "name": "urlencode bool val",
+  "template": "{{ {'a': true} | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode int val",
+  "template": "{{ {'a': 5} | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "loop index0 last combo",
+  "template": "{% for i in [1,2] %}{{ loop.index0 }}{{ loop.last }} {% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop revindex0",
+  "template": "{% for i in [1,2,3] %}{{ loop.revindex0 }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop depth recursive triple",
+  "template": "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "recursive loop length",
+  "template": "{% for i in [1] recursive %}{{ loop.length }}{{ loop([2]) if false }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for filtered with loop",
+  "template": "{% for i in [1,2,3] if i != 2 %}{{ loop.index }}:{{ i }} {% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for filtered length",
+  "template": "{% for i in [1,2,3] if i != 2 %}{{ loop.length }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "nested for with same var",
+  "template": "{% for i in [1,2] %}{% for i in [3] %}{{ i }}{% endfor %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for else break via slice",
+  "template": "{% for x in [] %}x{% else %}none{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop over chars unicode",
+  "template": "{% for c in '\u00e9x' %}{{ c }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "cycle with undefined args",
+  "template": "{% for i in [1,2] %}{{ loop.cycle(missing, 'b') | default('d') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro caller nested two",
+  "template": "{% macro outer() %}O[{{ caller() }}]{% endmacro %}{% call outer() %}i{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "macro varargs and kwargs both",
+  "template": "{% macro m() %}{{ varargs | join(',') }}/{{ kwargs | dictsort | join(',') }}{% endmacro %}{{ m(1, x=2) }}",
+  "data": {}
+ },
+ {
+  "name": "macro default none arg",
+  "template": "{% macro m(a=none) %}{{ a is none }}{% endmacro %}{{ m() }} {{ m(1) }}",
+  "data": {}
+ },
+ {
+  "name": "macro inside for reuse",
+  "template": "{% for i in [1,2] %}{% macro m() %}M{{ i }}{% endmacro %}{{ m() }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "call body with loop var",
+  "template": "{% macro m() %}{{ caller() }}{% endmacro %}{% for i in [1] %}{% call m() %}c{{ i }}{% endcall %}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro return used in expr",
+  "template": "{% macro m() %}5{% endmacro %}{{ m() + 1 }}",
+  "data": {}
+ },
+ {
+  "name": "macro empty body",
+  "template": "{% macro m() %}{% endmacro %}[{{ m() }}]",
+  "data": {}
+ },
+ {
+  "name": "extends with set after block",
+  "template": "{% extends 'base.html' %}{% block b %}B{% endblock %}{% set x = 1 %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}{% endblock %}"
+  }
+ },
+ {
+  "name": "include with macro call arg",
+  "template": "{% include 'p.html' %}",
+  "data": {
+   "v": "V"
+  },
+  "templates": {
+   "p.html": "{{ v | upper }}"
+  }
+ },
+ {
+  "name": "super then text",
+  "template": "{% extends 'base.html' %}{% block b %}a{{ super() }}b{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}S{% endblock %}"
+  }
+ },
+ {
+  "name": "block self-nesting",
+  "template": "{% block a %}{% block b %}x{% endblock %}{% endblock %}",
+  "data": {}
+ },
+ {
+  "name": "import within if",
+  "template": "{% if true %}{% import 'm.html' as m %}{{ m.v }}{% endif %}",
+  "data": {},
+  "templates": {
+   "m.html": "{% set v = 'IV' %}"
+  }
+ },
+ {
+  "name": "include list fallback second",
+  "template": "{% include ['nope.html', 'yes.html'] %}",
+  "data": {},
+  "templates": {
+   "yes.html": "Y"
+  }
+ },
+ {
+  "name": "lstrip tabs",
+  "template": "x\n\t{% if true %}y{% endif %}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "marker no-op plain",
+  "template": "{% set x = 1 %}{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "marker on include",
+  "template": "a\n  {%- include 'p.html' %}",
+  "data": {},
+  "templates": {
+   "p.html": "P"
+  }
+ },
+ {
+  "name": "trim blocks with space after tag",
+  "template": "{% if true %} \nx{% endif %}",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "marker both on var multiline",
+  "template": "a\n  {{-\n x\n -}}\n  b",
+  "data": {}
+ },
+ {
+  "name": "raw with minus inside",
+  "template": "{% raw %}a -{% endraw %}",
+  "data": {}
+ },
+ {
+  "name": "nested markers inherit",
+  "template": "{%- if true %}\n  {%- set x = 1 %}{{ x }}\n{%- endif %}",
+  "data": {}
+ },
+ {
+  "name": "float mod int",
+  "template": "{{ 7.5 % 2 }} {{ 7 % 2.5 }}",
+  "data": {}
+ },
+ {
+  "name": "neg floor float",
+  "template": "{{ -0.5 // 1 }}",
+  "data": {}
+ },
+ {
+  "name": "pow zero base zero",
+  "template": "{{ 0 ** 0 }} {{ 0 ** 1 }}",
+  "data": {}
+ },
+ {
+  "name": "div float precision",
+  "template": "{{ 1 / 3 == 0.3333333333333333 }}",
+  "data": {}
+ },
+ {
+  "name": "big int add chain",
+  "template": "{{ 9223372036854775807 + 9223372036854775807 }}",
+  "data": {}
+ },
+ {
+  "name": "big int mul overflow",
+  "template": "{{ 9223372036854775807 * 2 }}",
+  "data": {}
+ },
+ {
+  "name": "int compare big",
+  "template": "{{ 9223372036854775807 > 9223372036854775806 }}",
+  "data": {}
+ },
+ {
+  "name": "mod chain neg",
+  "template": "{{ -17 % 5 }} {{ 17 % -5 }} {{ -17 % -5 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined arithmetic compare",
+  "template": "{{ missing == missing }} {{ missing != 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined concat order",
+  "template": "{{ missing ~ 'a' ~ missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined in tuple",
+  "template": "{{ missing in (1, 2) }}",
+  "data": {}
+ },
+ {
+  "name": "undefined min max",
+  "template": "{{ [missing] | min | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined attr chain deep",
+  "template": "{{ a.b.c }}",
+  "data": {
+   "a": {
+    "b": {}
+   }
+  }
+ },
+ {
+  "name": "undefined bool not",
+  "template": "{{ not missing.x }}",
+  "data": {}
+ },
+ {
+  "name": "undefined tojson nested",
+  "template": "{{ {'k': [missing]} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "dict key int vs bool distinct",
+  "template": "{{ {1: 'a', true: 'b'}[1] }} {{ {1: 'a', true: 'b'}[true] }}",
+  "data": {}
+ },
+ {
+  "name": "list eq tuple",
+  "template": "{{ [1] == (1,) }} {{ (1,) == [1] }}",
+  "data": {}
+ },
+ {
+  "name": "concat tuple",
+  "template": "{{ 'a' ~ (1, 2) }}",
+  "data": {}
+ },
+ {
+  "name": "markup in list repr",
+  "template": "{{ ['<x>'] }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "filter on tuple",
+  "template": "{{ (1, 2) | sum }} {{ (3, 1) | min }}",
+  "data": {}
+ },
+ {
+  "name": "sort tuple items",
+  "template": "{{ [(2,), (1,)] | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "length of generator via list",
+  "template": "{{ [1,2] | map('string') | list | length }}",
+  "data": {}
+ },
+ {
+  "name": "test is number bool",
+  "template": "{{ true is number }} {{ true is integer }}",
+  "data": {}
+ },
+ {
+  "name": "string filter on markup",
+  "template": "{{ ('<x>' | safe) | length }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "escape length",
+  "template": "{{ '<x>' | escape | length }}",
+  "data": {}
  }
 ]
