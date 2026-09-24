@@ -51,9 +51,28 @@ module KrikriJinja
     end
   end
 
+  # Lazily-evaluated filter results (map/select/selectattr and friends);
+  # iterable like an array but has no length, matching Python generators.
+  class GeneratorValue
+    getter items : Array(AnyValue)
+
+    def initialize(@items)
+    end
+  end
+
+  # Loop assignment target: a plain name or a nested tuple pattern like
+  # (a, (b, c)).
+  class TargetSpec
+    property name : String
+    property children : Array(TargetSpec)?
+
+    def initialize(@name, @children = nil)
+    end
+  end
+
   # Anything a filter/test/global function may return.
   alias AnyV = Nil | Bool | Int64 | Float64 | String | Array(AnyValue) |
-               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue
+               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue | GeneratorValue
 
   # Marker for callable values (macros and host-provided functions).
   abstract class Callable
@@ -104,7 +123,7 @@ module KrikriJinja
     end
 
     class ForNode < Node
-      property targets : Array(String)
+      property targets : Array(TargetSpec)
       property iter : ExprNode
       property body : Array(Node)
       property orelse : Array(Node)?
@@ -121,9 +140,14 @@ module KrikriJinja
       property expr : ExprNode
       property attr_target : ExprNode? # {% set ns.attr = x %}
       property body : Array(Nodes::Node)? # {% set x %}...{% endset %}
+      property filter_name : String?
+      property filter_args : Array(ExprNode)
+      property filter_kwargs : Array(Tuple(String, ExprNode))
 
       def initialize(@targets, @expr, @attr_target, line : Int32)
         super(line)
+        @filter_args = [] of ExprNode
+        @filter_kwargs = [] of Tuple(String, ExprNode)
       end
     end
 
@@ -197,7 +221,7 @@ module KrikriJinja
 
     class ImportNode < Node
       property template : ExprNode
-      property names : Array(String) # imported name(s) / alias
+      property names : Array(Tuple(String, String)) # (source name, bound alias)
       property context : Bool
       property from_import : Bool
 

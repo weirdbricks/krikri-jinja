@@ -145,6 +145,42 @@ module KrikriJinja
         value = parse_expression
         expect_block_end
         Nodes::SetNode.new([first_name], value, target, line)
+      elsif accept_op("|")
+        fname_tok = current
+        unless fname_tok.type == TokenType::Ident
+          raise TemplateError.new("expected filter name after '|' in set", line)
+        end
+        advance
+        fargs = [] of ExprNode
+        fkwargs = [] of Tuple(String, ExprNode)
+        if accept_op("(")
+          loop do
+            break if accept_op(")")
+            if current.type == TokenType::Ident && peek(1).type == TokenType::Op &&
+               peek(1).value == "="
+              k = current.value
+              advance
+              advance
+              fkwargs << {k, parse_expression}
+            else
+              fargs << parse_expression
+            end
+            unless accept_op(",")
+              expect_op(")")
+              break
+            end
+            break if accept_op(")")
+          end
+        end
+        expect_block_end
+        body, _tag, _ = parse_until(["endset"])
+        value = Nodes::ConstNode.new("__set_block__", line)
+        node = Nodes::SetNode.new(targets_block(first_name), value, nil, line)
+        node.body = body
+        node.filter_name = fname_tok.value
+        node.filter_args = fargs
+        node.filter_kwargs = fkwargs
+        node
       elsif accept_block_end
         # block form: {% set x %}...{% endset %}
         body, _tag, _ = parse_until(["endset"])
@@ -178,9 +214,12 @@ module KrikriJinja
       # `scoped` / `required` modifiers are accepted; scoping semantics
       # are not observable without includes-over-blocks and are ignored.
       accept_ident("scoped")
-      accept_ident("required")
+      required = !!accept_ident("required")
       expect_block_end
       body, _tag, _ = parse_until(["endblock"])
+      if required && body.any? { |n| !(n.is_a?(Nodes::TextNode) && n.text.strip.empty?) }
+        raise TemplateError.new("Required blocks can only contain comments or whitespace", line)
+      end
       Nodes::BlockNode.new(block_name, body, line)
     end
 
@@ -260,6 +299,9 @@ module KrikriJinja
 
     private def parse_filter_block(line : Int32) : Nodes::FilterBlockNode
       filter = parse_filter_expr
+      while accept_op("|")
+        filter = parse_filter_expr(filter)
+      end
       expect_block_end
       body, _tag, _ = parse_until(["endfilter"])
       Nodes::FilterBlockNode.new(filter, body, line)
@@ -313,7 +355,7 @@ module KrikriJinja
 
     private def parse_import(tag : String, line : Int32) : Nodes::ImportNode
       template = parse_expression
-      names = [] of String
+      names = [] of Tuple(String, String)
       with_context = false
       if tag == "from"
         expect_ident("import")
@@ -324,15 +366,17 @@ module KrikriJinja
           end
           name = tok.value
           advance
+          alias_name = name
           if accept_ident("as")
-            name = parse_target_name
+            alias_name = parse_target_name
           end
-          names << name
+          names << {name, alias_name}
           break unless accept_op(",")
         end
       else
         expect_ident("as")
-        names << parse_target_name
+        alias_name = parse_target_name
+        names << {alias_name, alias_name}
       end
       if accept_ident("with")
         expect_ident("context")
@@ -369,12 +413,25 @@ module KrikriJinja
 
     # --- targets --------------------------------------------------------------
 
-    private def parse_target_list : Array(String)
-      targets = [parse_target_name]
+    private def parse_target_list : Array(TargetSpec)
+      targets = [parse_target_spec]
       while accept_op(",")
-        targets << parse_target_name
+        targets << parse_target_spec
       end
       targets
+    end
+
+    private def parse_target_spec : TargetSpec
+      if current.type == TokenType::Op && current.value == "("
+        advance
+        children = [parse_target_spec]
+        while accept_op(",")
+          children << parse_target_spec
+        end
+        expect_op(")")
+        return TargetSpec.new("", children)
+      end
+      TargetSpec.new(parse_target_name)
     end
 
     private def parse_target_name : String
@@ -485,7 +542,7 @@ module KrikriJinja
       line = current.line
       if accept_ident("not")
         # `not` binds looser than comparisons: `not a in b` == not (a in b)
-        return Nodes::UnaryOpNode.new("not", parse_compare, line)
+        return Nodes::UnaryOpNode.new("not", parse_not, line)
       end
       parse_compare
     end
@@ -511,6 +568,11 @@ module KrikriJinja
         elsif tok.type == TokenType::Ident && tok.value == "is"
           advance
           left = parse_test(left)
+          # filters may follow a test: `x is odd | string`
+          while current.type == TokenType::Op && current.value == "|"
+            advance
+            left = parse_filter_call(left)
+          end
           next
         else
           break
@@ -565,9 +627,9 @@ module KrikriJinja
       when TokenType::Int, TokenType::Float, TokenType::String
         true
       when TokenType::Ident
-        !(KEYWORDS.includes?(tok.value) && !{"true", "false", "True", "False", "none", "None"}.includes?(tok.value))
+        !(KEYWORDS.includes?(tok.value) && !{"true", "false", "True", "False", "none", "None", "missing", "ignore"}.includes?(tok.value))
       when TokenType::Op
-        {"(", "[", "{", "+", "-"}.includes?(tok.value)
+        {"(", "[", "{"}.includes?(tok.value)
       else
         false
       end
@@ -629,9 +691,9 @@ module KrikriJinja
 
     private def parse_pow : Nodes::ExprNode
       expr = parse_unary
-      if current.type == TokenType::Op && current.value == "**"
+      while current.type == TokenType::Op && current.value == "**"
         advance
-        return Nodes::BinOpNode.new("**", expr, parse_pow, expr.line)
+        expr = Nodes::BinOpNode.new("**", expr, parse_unary, expr.line)
       end
       expr
     end
@@ -641,7 +703,7 @@ module KrikriJinja
       if tok.type == TokenType::Op && {"-", "+"}.includes?(tok.value)
         advance
         operand = parse_unary_no_filter
-        expr = tok.value == "-" ? Nodes::UnaryOpNode.new("-", operand, tok.line).as(ExprNode) : operand
+        expr = Nodes::UnaryOpNode.new(tok.value, operand, tok.line).as(ExprNode)
         # filters bind tighter than unary operators: -4.7|abs == abs(-4.7)
         return parse_postfix_from(expr, expr.line)
       end
@@ -708,6 +770,20 @@ module KrikriJinja
         end
       end
       expr
+    end
+
+    private def parse_filter_call(left : ExprNode) : ExprNode
+      name_tok = current
+      unless name_tok.type == TokenType::Ident
+        raise TemplateError.new("expected filter name after '|'", name_tok.line)
+      end
+      advance
+      args = [] of ExprNode
+      kwargs = [] of Tuple(String, ExprNode)
+      if accept_op("(")
+        args, kwargs = parse_call_args_until_close
+      end
+      Nodes::FilterNode.new(name_tok.value, args, kwargs, left, left.line)
     end
 
     private def parse_slice_parts : Tuple(ExprNode?, ExprNode?, ExprNode?, Bool)
@@ -803,8 +879,22 @@ module KrikriJinja
           if accept_op(")")
             return Nodes::TupleExprNode.new([] of ExprNode, line)
           end
-          first = parse_tuple_expression
-          expect_op(")")
+          first = parse_expression
+          is_tuple = false
+          closed = false
+          items = [first]
+          while accept_op(",")
+            is_tuple = true
+            if accept_op(")")
+              closed = true
+              break
+            end
+            items << parse_expression
+          end
+          expect_op(")") unless closed
+          if is_tuple
+            return Nodes::TupleExprNode.new(items, line)
+          end
           first
         when "["
           advance
@@ -845,7 +935,7 @@ module KrikriJinja
       end
     end
 
-    private def parse_filter_expr : ExprNode
+    private def parse_filter_expr(target : ExprNode? = nil) : ExprNode
       # For {% filter name(args) %} - build a FilterNode around a placeholder
       line = current.line
       name_tok = current
@@ -858,7 +948,7 @@ module KrikriJinja
       if accept_op("(")
         args, kwargs = parse_call_args_until_close
       end
-      expr = Nodes::NameNode.new("__filter_block__", line)
+      expr = target || Nodes::NameNode.new("__filter_block__", line).as(ExprNode)
       Nodes::FilterNode.new(name_tok.value, args, kwargs, expr, line)
     end
 
