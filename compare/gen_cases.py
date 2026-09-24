@@ -1299,6 +1299,121 @@ add("empty call parens", "{{ range }}{{ range() is iterable }}")
 add("dict access after filter", "{{ {'a': {'b': 'c'}}['a']['b'] }}")
 add("concat markup autoescape", "{{ 'a' ~ ('<b>' | safe) }}", autoescape=True)
 
+
+# ================= edge-case expansion (round 7) =================
+
+# --- filter option combos ---------------------------------------------------
+add("sort attr reverse", "{{ users | sort(attribute='age', reverse=true) | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "a", "age": 1}, {"n": "b", "age": 3}]})
+add("sort strings reverse", "{{ ['b', 'A', 'C'] | sort(reverse=true) | join(',') }}")
+add("unique attr case", "{{ users | unique(attribute='g', case_sensitive=true) | map(attribute='g') | join(',') }}",
+    {"users": [{"g": "a"}, {"g": "A"}]})
+add("min attr reverse n/a", "{{ users | min(attribute='age') }} {{ users | max(attribute='age') }}",
+    {"users": [{"age": 2}, {"age": 1}]})
+add("batch fill string", "{% for row in [1,2,3] | batch(2, 'x') %}[{{ row | join(',') }}]{% endfor %}")
+add("slice fill string", "{% for col in [1,2,3] | slice(2, '-') %}[{{ col | join(',') }}]{% endfor %}")
+add("map test with arg", "{{ ['a', 'b', 'c'] | select('in', 'abc') | join(',') }}")
+add("truncate width one", "{{ 'abcdef' | truncate(1, true, '...', 0) }}")
+add("truncate exact length", "{{ 'abcde' | truncate(5, true, '...', 0) }}")
+add("wordwrap tabs", "{{ 'a\\tb' | wordwrap(3) }}|")
+add("wordwrap multiple spaces", "{{ 'a  b' | wordwrap(10) }}|")
+add("indent width first false", "{{ 'a\\nb' | indent(2, false) }}|")
+add("center even width", "{{ 'ab' | center(5) }}|")
+add("filesizeformat 999", "{{ 999 | filesizeformat }} {{ 1000 | filesizeformat(true) }}")
+add("filesizeformat huge", "{{ 1.5e15 | filesizeformat }}")
+add("replace count zero", "{{ 'aaa' | replace('a', 'b', 0) }}")
+add("trim multi chars", "{{ 'xyaxy' | trim('xy') }}")
+add("default with false arg", "{{ false | default('d', false) }} {{ none | default('d') }}")
+add("sum negative", "{{ [1, -2, 3] | sum }}")
+add("abs int min", "{{ -9223372036854775807 | abs }}")
+
+# --- tests and comparisons ----------------------------------------------------
+add("test sameas bool", "{{ true is sameas true }} {{ 1 is sameas true }}")
+add("test in empty", "{{ 1 is in [] }} {{ none is in [none] }}")
+add("test ge le", "{{ 1 is le 1 }} {{ 2 is ge 3 }}")
+add("test defined falsy", "{{ false is defined }} {{ none is defined }} {{ 0 is defined }}")
+add("test odd negative", "{{ -3 is odd }}")
+add("test iterable generator", "{{ [1] | map('string') is iterable }} {{ 5 is iterable }}")
+add("test sequence tuple", "{{ (1,) is sequence }} {{ (1,) is mapping }}")
+add("compare dict lt", "{{ {'a': 1} < {'a': 2} }}")
+add("compare list ge", "{{ [2] >= [1] }}")
+add("in with markup", "{{ 'a' in ('<a>' | safe) }}")
+add("chain eq ne", "{{ 1 == 1 != 2 }}")
+
+# --- macros: signatures ---------------------------------------------------------
+add("macro positional after kwarg", "{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(b=2, a=1) }}")
+add("macro default then positional", "{% macro m(a=1, b=2) %}{{ a }}{{ b }}{% endmacro %}{{ m(9) }}")
+add("macro extra positional error", "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, 2) }}")
+add("macro kwarg named param", "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(a=5) }}")
+add("macro varargs with call", "{% macro m() %}{{ varargs | join(',') }}{{ caller() if caller }}{% endmacro %}{{ m(1, 2) }}")
+add("macro nested definition order", "{% macro a() %}{{ b() }}{% endmacro %}{% macro b() %}B{% endmacro %}{{ a() }}")
+add("caller param shadow", "{% macro m(caller) %}{{ caller }}{% endmacro %}{{ m('x') }}")
+
+# --- inheritance / includes ------------------------------------------------------
+add("include same twice", "{% include 'p.html' %}{% include 'p.html' %}", templates={"p.html": "x"})
+add("extends empty child block", "{% extends 'base.html' %}{% block b %}{% endblock %}tail", templates={
+    "base.html": "S{% block b %}D{% endblock %}E"})
+add("nested blocks three deep", "{% extends 'base.html' %}{% block inner %}X{% endblock %}", templates={
+    "base.html": "{% block outer %}O({% block inner %}D{% endblock %}){% endblock %}"})
+add("block override in nested for", "{% extends 'base.html' %}{% block b %}C{% endblock %}", templates={
+    "base.html": "{% for i in [1,2] %}{% block b %}D{% endblock %}{% endfor %}"})
+add("import macro calls macro", "{% import 'm.html' as m %}{{ m.outer() }}", templates={
+    "m.html": "{% macro inner() %}I{% endmacro %}{% macro outer() %}O{{ inner() }}{% endmacro %}"})
+add("from import macro with kwargs", "{% from 'm.html' import g %}{{ g(n='x') }}", templates={
+    "m.html": "{% macro g(n) %}hi {{ n }}{% endmacro %}"})
+add("child set visible in parent block", "{% extends 'base.html' %}{% set v = 'X' %}{% block b %}{{ v }}{% endblock %}", templates={
+    "base.html": "[{% block b %}{% endblock %}]"})
+
+# --- whitespace / lexer -----------------------------------------------------------
+add("marker after block name", "{% if true -%} X {%- endif %}")
+add("var with comment inside", "{{ 1 # not a comment }}")
+add("comment multiline", "a{# c\n d #}b")
+add("raw contains block end", "{% raw %}{% endraw2 %}{% endraw %}")
+add("raw contains opener", "{% raw %}{{ x }}{% endraw %}")
+add("string with percent", "{{ '100%' }}")
+add("string with brace", "{{ '{' }} {{ '}' }}")
+add("adjacent var tags", "{{ 1 }}{{ 2 }}")
+add("tag inside string in expression", "{{ 'x{% if %}' }}")
+add("whitespace before eof", "abc  ")
+add("only whitespace", "  ")
+add("text with tab", "a\\tb")
+add("marker on else", "{% if false %}a{% elif false %}b{% else -%}c{% endif %}")
+add("double minus marker", "a  {{- - 'x' -}}  b")
+
+# --- arithmetic / numbers ------------------------------------------------------------
+add("float string multiply", "{{ 'a' * 2.0 }}")
+add("div by bool", "{{ 6 / true }} {{ 6 // false }}")
+add("pow bool exp", "{{ 3 ** false }}")
+add("negative pow result int", "{{ 2 ** 0 }}")
+add("long chain mod", "{{ 17 % 5 % 3 }}")
+add("compare chains num", "{{ 1 < 2 == true }}")
+add("float eq int neg", "{{ -1.0 == -1 }}")
+add("sub bool", "{{ true - false }}")
+add("negate float", "{{ -1.5 }} {{ --1.5 }}")
+add("paren precedence", "{{ (2 + 3) % 4 * 2 }}")
+
+# --- undefined / errors ------------------------------------------------------------
+add("undefined filter with args", "{{ missing | replace('a', 'b') | default('d') }}")
+add("undefined getitem default", "{{ missing['k'] | default('d') }}")
+add("undefined in loop else", "{% for x in missing %}{{ x }}{% else %}e{% endfor %}")
+add("undefined attr in test", "{{ missing.x is defined }}")
+add("undefined slice default", "{{ missing[1:2] | default('d') }}")
+add("none attr error", "{{ none.upper() }}")
+add("int attr error", "{{ (5).missing }}")
+add("getitem none", "{{ none['k'] | default('d') }}")
+add("bool arithmetic in string", "{{ true ~ false }}")
+
+# --- containers ------------------------------------------------------------------------
+add("list append do", "{% set l = [] %}{% do l.append('a') %}{% do l.append('b') %}{{ l | join(',') }}")
+add("list pop method", "{{ [1,2,3] | list }}")
+add("nested dict getitem attr", "{{ d['a'].b }}", {"d": {"a": {"b": "c"}}})
+add("dict with tuple key", "{{ {(1, 2): 'v'} }}")
+add("list of dict repr", "{{ [{'a': 1}] }}")
+add("string iteration index", "{{ 'ab'[1] }} {{ 'ab' | list | last }}")
+add("tuple nested index", "{{ ((1, 2), (3, 4))[1][0] }}")
+add("dict length", "{{ {'a': 1, 'b': 2} | length }}")
+add("empty dict truthiness", "{% if {} %}a{% else %}b{% endif %} {% if [0] %}c{% endif %}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
