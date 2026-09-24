@@ -1163,6 +1163,142 @@ add("cycler empty error", "{% set c = cycler() %}{{ c.next() }}")
 add("joiner no args", "{% set j = joiner() %}{{ j() }}x{{ j() }}")
 add("namespace positional dict", "{% set ns = namespace({'a': 1}) %}{{ ns.a }}")
 
+
+# ================= edge-case expansion (round 6) =================
+
+# --- filters on none/bool -------------------------------------------------
+add("upper none", "{{ none | upper }}")
+add("lower none", "{{ none | lower }}")
+add("title none", "{{ none | title }}")
+add("trim none", "{{ none | trim }}|")
+add("capitalize none", "{{ none | capitalize }}")
+add("replace none", "{{ none | replace('a', 'b') }}")
+add("length none", "{{ none | length }}")
+add("first none", "{{ none | first }}")
+add("list none", "{{ none | list }}")
+add("join none", "{{ none | join(',') }}")
+add("sort none", "{{ none | sort }}")
+add("reverse none", "{{ none | reverse }}")
+add("escape none", "{{ none | escape }}")
+add("int true", "{{ true | int }} {{ false | int }}")
+add("abs float int", "{{ -2.5 | abs }} {{ -2 | abs }}")
+add("round on int", "{{ 5 | round }}")
+add("upper markup", "{{ '<x>' | upper }}", autoescape=False)
+add("striptags markup", "{{ ('<b>x</b>' | safe) | striptags }}", autoescape=False)
+add("urlencode markup", "{{ ('a b' | safe) | urlencode }}", autoescape=False)
+
+# --- string methods: round 3 ----------------------------------------------
+add("str find negative", "{{ 'abcabc'.find('b', -3) }} {{ 'abc'.find('b', 5) }}")
+add("str split maxsplit zero", "{{ 'a,b,c'.split(',', 0) | join('|') }}")
+add("str rsplit maxsplit zero", "{{ 'a,b,c'.rsplit(',', 0) | join('|') }}")
+add("str count zero sub", "{{ 'abc'.count('') }}")
+add("str replace empty old", "{{ 'abc'.replace('', '-') }}")
+add("str ljust zero", "{{ 'a'.ljust(0) }}|")
+add("str center small", "{{ 'abc'.center(2) }}")
+add("str zfill zero", "{{ 'a'.zfill(0) }}")
+add("str isdigit empty", "{{ ''.isdigit() }} {{ ''.isalpha() }}")
+add("str expandtabs multi", "{{ 'a\\t\\tb'.expandtabs(3) }}")
+add("str splitlines cr only", "{{ 'a\\rb'.splitlines() | join('|') }}")
+add("str rpartition no sep", "{{ 'abc'.rpartition('x') | join('|') }}")
+add("str partition multi sep", "{{ 'a=b=c'.partition('=') | join('|') }} {{ 'a=b=c'.rpartition('=') | join('|') }}")
+add("str casefold digits", "{{ 'A1b'.casefold() }}")
+
+# --- tojson and encoding ---------------------------------------------------
+add("tojson markup", "{{ ('<x>' | safe) | tojson }}", autoescape=False)
+add("tojson tuple", "{{ (1, 2) | tojson }}")
+add("tojson key order", "{{ {'b': 1, 'a': 2, 'A': 3} | tojson }}")
+add("tojson slash", "{{ 'a/b' | tojson }}")
+add("tojson control char", "{{ 'a\\u0001b' | tojson }}")
+add("tojson int keys", "{{ {1: 'a'} | tojson }}")
+add("urlencode dict unicode", "{{ {'k\u00e9y': 'v\u00e9l'} | urlencode }}")
+
+# --- loop and scope corners -------------------------------------------------
+add("loop outside for", "{{ loop | default('none') }}")
+add("caller outside call", "{{ caller | default('none') }}")
+varargs_outside = "{% macro m() %}{{ varargs | length }}{% endmacro %}{{ m() }}"
+add("varargs outside macro", "{{ varargs | length }}")
+add("loop in nested for shadow", "{% for i in [1] %}{% for j in [2] %}{{ i }}{{ j }}{% endfor %}{{ i }}{% endfor %}")
+add("set inside for stays", "{% for i in [1] %}{% set x = i %}{% endfor %}{{ x | default('d') }}")
+add("namespace in loop", "{% set ns = namespace(n=0) %}{% for i in [1,2,3] %}{% set ns.n = ns.n + i %}{% endfor %}{{ ns.n }}")
+add("for else on filtered empty", "{% for x in [1,2,3] if false %}x{% else %}e{% endfor %}")
+add("for over string with filter", "{% for c in 'ab' | upper %}{{ c }}{% endfor %}")
+add("recursive with else", "{% for i in [] recursive %}x{% else %}e{% endfor %}")
+add("loop.changed objects", "{% for x in ['a','a','b'] %}{{ loop.changed(x) }}{% endfor %}")
+
+# --- macros: round 5 ---------------------------------------------------------
+add("macro call in attr chain", "{% macro m() %}x{% endmacro %}{{ m() | upper }}")
+add("macro returning list", "{% macro m() %}{{ [1,2] }}{% endmacro %}{{ m() }}")
+add("macro with expression default", "{% macro m(a, b=a ~ '!') %}{{ b }}{% endmacro %}{{ m('hi') }}")
+add("macro kwargs without call", "{% macro m(a=1) %}{{ a }}{% endmacro %}{{ m(b=2) }}")
+add("call nested macros", "{% macro a() %}{{ caller() }}{% endmacro %}{% call a() %}in{% endcall %}")
+add("macro access loop outer", "{% for x in [1] %}{% macro m() %}{{ x }}{% endmacro %}{{ m() }}{% endfor %}")
+
+# --- inheritance: round 5 -------------------------------------------------------
+add("extends with expression name", "{% extends name %}{% block b %}C{% endblock %}", {"name": "base.html"}, templates={
+    "base.html": "{% block b %}B{% endblock %}"})
+add("block with scoped", "{% extends 'base.html' %}{% block b scoped %}C{% endblock %}", templates={
+    "base.html": "{% block b %}B{% endblock %}"})
+add("three level super chain", "{% extends 'mid.html' %}{% block b %}3({{ super() }}){% endblock %}", templates={
+    "base.html": "{% block b %}1{% endblock %}",
+    "mid.html": "{% extends 'base.html' %}{% block b %}2({{ super() }}){% endblock %}"})
+add("include in for with macro", "{% for i in [1,2] %}{% include 'p.html' %}{% endfor %}", templates={
+    "p.html": "{{ i }}"})
+add("import then from same", "{% import 'm.html' as m %}{% from 'm.html' import v %}{{ m.v }}{{ v }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("extends missing error", "{% extends 'nope.html' %}")
+
+# --- whitespace: round 5 -----------------------------------------------------------
+add("marker on for", "{% for i in [1,2] -%}\n {{ i }}\n{%- endfor %}")
+add("marker on set line", "x {%- set y = 2 -%} y{{ y }}")
+add("trim blocks plus marker", "a\n{%+ if true %}\nb\n{% endif %}", trim_blocks=True)
+add("lstrip marker on var", "x\n  {{- 1 }}", lstrip_blocks=True)
+add("nested raw in if", "{% if true %}{% raw %}{{ x }}{% endraw %}{% endif %}")
+add("comment between blocks", "{% if true %}a{# c #}{% endif %}")
+
+# --- numbers: round 5 ------------------------------------------------------------------
+add("float compare big", "{{ 1e308 * 10 }}")
+add("int neg literal", "{{ - - 5 }} {{ - -5 }}")
+add("chained add sub", "{{ 1 + 2 - 3 + 4 }}")
+add("mixed mul div", "{{ 6 / 2 * 3 }}")
+add("pow float frac", "{{ 4 ** 0.5 }} {{ 8 ** (1/3) | round(2) }}")
+add("mod negative float", "{{ -7.5 % 2 }}")
+add("floor div float neg", "{{ -7.5 // 2 }}")
+add("compare float int", "{{ 1 == 1.0 }} {{ 1 < 1.5 }} {{ 2 > 1.9 }}")
+add("bool in range", "{{ range(true) | length }}")
+add("division by negative", "{{ 7 / -2 }} {{ 7 // -2 }} {{ 7 % -2 }}")
+
+# --- statements: round 5 -----------------------------------------------------------------
+add("if not in", "{% if 1 not in [1] %}a{% else %}b{% endif %}")
+add("if is not test", "{% if none is not none %}a{% else %}b{% endif %}")
+add("set attr on undefined", "{% set missing.x = 1 %}")
+add("set item on int", "{% set x = 5 %}{% set x[0] = 1 %}")
+add("with dict unpack", "{% with a, b = 1, 2 %}{{ a }}{{ b }}{% endwith %}")
+add("for over none", "{% for x in none %}x{% else %}e{% endfor %}")
+add("for over int", "{% for x in 5 %}x{% endfor %}")
+add("elif after else error", "{% if false %}a{% else %}b{% elif true %}c{% endif %}")
+
+# --- globals: round 4 ----------------------------------------------------------------------
+add("range equal bounds", "{% for i in range(2, 2) %}x{% else %}e{% endfor %}")
+add("range reverse", "{% for i in range(3, 0) %}{{ i }}{% endfor %}|")
+add("cycler reset then current", "{% set c = cycler('a', 'b') %}{{ c.next() }}{{ c.reset() }}{{ c.current }}")
+add("joiner reused", "{% set j = joiner('-') %}{{ j() }}{{ j() }}{{ j() }}")
+add("namespace bool set", "{% set ns = namespace() %}{% set ns.flag = true %}{{ ns.flag }}")
+add("dict from dict", "{{ dict({'a': 1}) }}")
+add("namespace with context", "{% set ns = namespace(x=1) %}{% with y = 2 %}{% set ns.x = y %}{% endwith %}{{ ns.x }}")
+
+# --- misc: round 4 ----------------------------------------------------------------------------
+add("deep filter chain", "{{ '  ab  ' | trim | upper | reverse | length }}")
+add("filter with block var", "{% set x = 'ab' %}{{ x | upper }}")
+add("test with filter arg", "{{ ['a'] | first is eq 'a' }}")
+add("getattr chain method", "{{ 'abc'.upper().lower() }}")
+add("method on literal", "{{ 5.to_string }}")
+add("getitem on undefined error", "{{ missing['k'] }}")
+add("slice undefined error", "{{ missing[1:] }}")
+add("negative tuple index", "{{ (1,2,3)[-1] }}")
+add("empty call parens", "{{ range }}{{ range() is iterable }}")
+add("dict access after filter", "{{ {'a': {'b': 'c'}}['a']['b'] }}")
+add("concat markup autoescape", "{{ 'a' ~ ('<b>' | safe) }}", autoescape=True)
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
