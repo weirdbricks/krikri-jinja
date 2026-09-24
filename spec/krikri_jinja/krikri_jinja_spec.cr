@@ -135,7 +135,7 @@ describe KrikriJinja do
 
   describe "filters" do
     it "applies builtin string filters" do
-      KrikriJinja.render("{{ 'hi'.upper }} {{ 'HI'.lower }} {{ ' hi ' | trim }} {{ 'ab' | length }}")
+      KrikriJinja.render("{{ 'hi'.upper() }} {{ 'HI'.lower() }} {{ ' hi ' | trim }} {{ 'ab' | length }}")
         .should eq("HI hi hi 2")
     end
 

@@ -362,6 +362,66 @@ describe KrikriJinja do
       end
     end
   end
+
+  describe "parity: round 6" do
+    it "renders infinity and nan like python" do
+      KrikriJinja.render("{{ 1e308 * 10 }}").should eq("inf")
+    end
+
+    it "raises when iterating none but not undefined" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% for x in none %}x{% endfor %}")
+      end
+      KrikriJinja.render("{% for x in missing %}x{% else %}e{% endfor %}").should eq("e")
+    end
+
+    it "exposes str.upper/lower as callable methods" do
+      KrikriJinja.render("{{ 'abc'.upper().lower() }}").should eq("abc")
+    end
+
+    it "keeps int inputs int through round" do
+      KrikriJinja.render("{{ 5 | round }}").should eq("5")
+      KrikriJinja.render("{{ 1234 | round(-2) }}").should eq("1200")
+      KrikriJinja.render("{{ 1234.0 | round(-2) }}").should eq("1200.0")
+    end
+
+    it "counts empty substring like python" do
+      KrikriJinja.render("{{ 'abc'.count('') }}").should eq("4")
+    end
+
+    it "handles negative and out-of-range find starts" do
+      KrikriJinja.render("{{ 'abcabc'.find('b', -3) }} {{ 'abc'.find('b', 5) }}").should eq("4 -1")
+    end
+
+    it "json-encodes tuple, markup and typed keys" do
+      KrikriJinja.render("{{ (1, 2) | tojson }}").should eq("[1, 2]")
+      KrikriJinja.render("{{ ('<x>' | safe) | tojson }}").should eq("\"\\u003cx\\u003e\"")
+      KrikriJinja.render("{{ {1: 'a'} | tojson }}").should eq("{\"1\": \"a\"}")
+    end
+
+    it "shows loop targets but not loop in includes" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"p.html" => "{{ i }}"}))
+        .render_string("{% for i in [1,2] %}{% include 'p.html' %}{% endfor %}",
+          KrikriJinja.context({} of String => String)).should eq("12")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"p.html" => "{{ loop.index }}"}))
+          .render_string("{% for i in [1,2] %}{% include 'p.html' %}{% endfor %}",
+            KrikriJinja.context({} of String => String))
+      end
+    end
+
+    it "rejects unknown macro kwargs unless the body uses kwargs" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% macro m(a=1) %}{{ a }}{% endmacro %}{{ m(b=2) }}")
+      end
+      KrikriJinja.render("{% macro m(a) %}{{ kwargs['b'] | default('nb') }}{% endmacro %}{{ m(1, b=2) }}")
+        .should eq("2")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% macro m() %}x{% endmacro %}{{ m(1, 2) }}")
+      end
+      KrikriJinja.render("{% macro m() %}{{ varargs | length }}{% endmacro %}{{ m(1, 2, 3) }}").should eq("3")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
