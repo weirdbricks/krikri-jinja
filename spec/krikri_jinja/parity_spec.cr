@@ -282,6 +282,86 @@ describe KrikriJinja do
     end
   end
 
+
+  describe "parity: round 5" do
+    it "urlize trims punctuation and escapes html without linkifying" do
+      render_env("{{ 'go to http://x.com, now' | urlize }}")
+        .should eq("go to <a href=\"http://x.com\" rel=\"noopener\">http://x.com</a>, now")
+      render_env("{{ '(see http://x.com)' | urlize }}")
+        .should eq("(see <a href=\"http://x.com\" rel=\"noopener\">http://x.com</a>)")
+      render_env("{{ '<a href=\"http://x.com\">x</a>' | urlize }}")
+        .should eq("&lt;a href=&#34;http://x.com&#34;&gt;x&lt;/a&gt;")
+      render_env("{{ 'http://x.com?a=<b>' | urlize }}", autoescape: true)
+        .should eq("<a href=\"http://x.com?a=&lt;b&gt;\" rel=\"noopener\">http://x.com?a=&lt;b&gt;</a>")
+    end
+
+    it "rejects duplicate block names in one template" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% block b %}1{% endblock %}{% block b %}2{% endblock %}")
+      end
+    end
+
+    it "keeps for-loop variables visible inside blocks that contain the loop" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new(
+        {"base.html" => "{% block b %}{% endblock %}"}
+      )).render_string(
+        "{% extends 'base.html' %}{% block b %}{% for i in [1,2] %}{{ i }}{% endfor %}{% endblock %}",
+        KrikriJinja.context({} of String => String)).should eq("12")
+    end
+
+    it "captures set blocks as Markup under autoescape" do
+      render_env("{% set x %}<y>{% endset %}{{ x }}", autoescape: true).should eq("<y>")
+    end
+
+    it "errors on tuple arguments spread into tests" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ 1 is in (1, 2) }}")
+      end
+    end
+
+    it "supports membership and equality on tuples" do
+      KrikriJinja.render("{{ 2 in (1, 2) }} {{ (1, 2) == (1, 2) }} {{ (1,) == (1, 2) }}").should eq("True True False")
+    end
+
+    it "sorts groupby keys first and raises on uncomparable ones" do
+      KrikriJinja.render("{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+        {"items" => [{"k" => 2}, {"k" => 10}]}).should eq("2;10;")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+          {"items" => [{"k" => nil}, {"k" => nil}]})
+      end
+    end
+
+    it "accepts underscore int literals and bool range args" do
+      KrikriJinja.render("{{ 1_000 }}").should eq("1000")
+      KrikriJinja.render("{% for i in range(true) %}{{ i }}{% endfor %}").should eq("0")
+    end
+
+    it "sums beyond Int64 via big-int fallback" do
+      KrikriJinja.render("{{ [9223372036854775807, 1] | sum }}").should eq("9223372036854775808")
+    end
+
+    it "rejects super with arguments and indent on non-strings" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"base.html" => "{% block b %}B{% endblock %}"}))
+          .render_string("{% extends 'base.html' %}{% block b %}{{ super(1) }}{% endblock %}",
+            KrikriJinja.context({} of String => String))
+      end
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ 5 | indent(2) }}")
+      end
+    end
+
+    it "defaults joiner separator to ', '" do
+      KrikriJinja.render("{% set j = joiner() %}{{ j() }}x{{ j() }}").should eq("x, ")
+    end
+
+    it "rejects over-called filters through map" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ ['ab', 'c'] | map('center', 3, '-') | join('|') }}")
+      end
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
