@@ -32,12 +32,19 @@ module KrikriJinja
   register_filter("length") { |v, _a, _k, _c| AnyValue.new(length_of(v)) }
   register_filter("count") { |v, _a, _k, _c| AnyValue.new(length_of(v)) }
   register_filter("string") { |v, _a, _k, _c| AnyValue.new(stringify(v)) }
-  register_filter("escape") { |v, _a, _k, _c| AnyValue.new(escape_html(stringify(v))) }
-  register_filter("e") { |v, _a, _k, _c| AnyValue.new(escape_html(stringify(v))) }
-  register_filter("safe") { |v, _a, _k, _c| v }
+  register_filter("escape") { |v, _a, _k, _c| AnyValue.new(Markup.new(escape_html(stringify(v)))) }
+  register_filter("e") { |v, _a, _k, _c| AnyValue.new(Markup.new(escape_html(stringify(v)))) }
+  register_filter("forceescape") { |v, _a, _k, _c| AnyValue.new(Markup.new(escape_html(stringify(v)))) }
+  register_filter("safe") do |v, _a, _k, _c|
+    case raw = v.raw
+    when Markup then v
+    else AnyValue.new(Markup.new(stringify(v)))
+    end
+  end
   register_filter("int") do |v, args, kwargs, _c|
     default = (kwargs["default"]? || args[0]? || AnyValue.new(0i64)).raw.as?(Int64) || 0i64
-    AnyValue.new(to_int(v.raw) || default)
+    base = (kwargs["base"]? || AnyValue.new(10i64)).raw.as?(Int64) || 10i64
+    AnyValue.new(to_int(v.raw, base) || default)
   end
   register_filter("float") do |v, args, kwargs, _c|
     default = (kwargs["default"]? || args[0]? || AnyValue.new(0.0)).raw.as?(Float64) || 0.0
@@ -89,10 +96,16 @@ module KrikriJinja
     else AnyValue.new(to_iterable(v).reverse)
     end
   end
-  register_filter("unique") do |v, _a, _k, _c|
+  register_filter("unique") do |v, _a, kwargs, _c|
+    attr = kwargs["attribute"]?.try(&.raw.as?(String))
     result = [] of AnyValue
+    keys = [] of AnyValue
     to_iterable(v).each do |item|
-      result << item unless result.any? { |x| values_equal(x, item) }
+      key = attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item
+      unless keys.any? { |x| values_equal(x, key) }
+        keys << key
+        result << item
+      end
     end
     AnyValue.new(result)
   end
@@ -245,6 +258,11 @@ module KrikriJinja
                  found = get_attr(item, attr)
                  found.nil? && default ? default : found || AnyValue.new(nil)
                end
+             elsif tname = kwargs["test"]?.try(&.raw.as?(String))
+               t = BUILTIN_TESTS[tname]?
+               raise TemplateError.new("unknown test #{tname.inspect} in map", 0) unless t
+               extra = args[0..]
+               to_iterable(v).select { |item| t.call(item, extra, kwargs, c) }
              else
                fname = kwargs["filter"]?.try(&.raw.as?(String))
                raise TemplateError.new("map requires attribute or filter", 0) unless fname
@@ -266,11 +284,11 @@ module KrikriJinja
   register_filter("rejectattr") do |v, args, kwargs, c|
     AnyValue.new(attr_select(v, args, kwargs, c, keep: false))
   end
-  register_filter("groupby") do |v, args, _k, _c|
+  register_filter("groupby") do |v, args, kwargs, _c|
     attr = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("groupby requires an attribute", 0)
     groups = [] of Tuple(AnyValue, Array(AnyValue))
     to_iterable(v).each do |item|
-      key = get_attr(item, attr) || AnyValue.new(nil)
+      key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(nil)
       if g = groups.find { |(k, _)| values_equal(k, key) }
         g[1] << item
       else
@@ -362,6 +380,66 @@ module KrikriJinja
     AnyValue.new(result.join('\n'))
   end
 
+  register_filter("dictsort") do |v, args, kwargs, _c|
+    raw = v.raw
+    raise TemplateError.new("dictsort expects a mapping", 0) unless raw.is_a?(Hash)
+    by = kwargs["by"]?.try(&.raw.as?(String)) || "key"
+    reverse = (kwargs["reverse"]? || AnyValue.new(false)).raw == true
+    case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
+    entries = raw.map do |k, x|
+      pair = Array(AnyValue).new(2)
+      pair << AnyValue.new(k)
+      pair << x
+      AnyValue.new(pair)
+    end
+    entries.sort! do |a, b|
+      ka = a.raw.as(Array)[0]
+      kb = b.raw.as(Array)[0]
+      if by == "value"
+        ka = a.raw.as(Array)[1]
+        kb = b.raw.as(Array)[1]
+      end
+      cmp = begin
+        compare_values(ka, kb)
+      rescue TemplateError
+        (case_sensitive ? stringify(ka) : stringify(ka).downcase) <=>
+          (case_sensitive ? stringify(kb) : stringify(kb).downcase)
+      end
+      reverse ? -(cmp) : cmp
+    end
+    AnyValue.new(entries)
+  end
+  register_filter("filesizeformat") do |v, args, kwargs, _c|
+    binary = (kwargs["binary"]? || args[0]? || AnyValue.new(false)).raw == true
+    bytes = v.raw.as?(Int64) || v.raw.as?(Float64).try(&.to_i64) ||
+            raise TemplateError.new("filesizeformat expects a number", 0)
+    base = binary ? 1024i64 : 1000i64
+    prefixes = binary ? ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
+                      : ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    AnyValue.new(KrikriJinja.filesizeformat(bytes, base, prefixes, binary))
+  end
+  register_filter("format") do |v, args, _k, _c|
+    AnyValue.new(KrikriJinja.py_format(stringify(v), args))
+  end
+  register_filter("center") do |v, args, _k, _c|
+    width = (args[0]?.try(&.raw.as?(Int64)) || 80i64)
+    s = stringify(v)
+    pad = width - s.size
+    result = if pad <= 0
+               s
+             else
+               left = pad // 2
+               (" " * left) + s + (" " * (pad - left))
+             end
+    AnyValue.new(result)
+  end
+  register_filter("pprint") { |v, _a, _k, _c| AnyValue.new(stringify(v)) }
+  register_filter("random") do |v, _a, _k, _c|
+    items = to_iterable(v)
+    raise TemplateError.new("random of empty sequence", 0) if items.empty?
+    items[Random.new.rand(items.size)]
+  end
+
   private def self.test_select(v, args, kwargs, ctx, keep : Bool) : Array(AnyValue)
     fname = args[0]?.try(&.raw.as?(String)) || kwargs["test"]?.try(&.raw.as?(String)) ||
             raise TemplateError.new("select/reject requires a test name", 0)
@@ -428,14 +506,26 @@ module KrikriJinja
     end
   end
 
-  private def self.to_int(v : AnyV) : Int64?
+  private def self.to_int(v : AnyV, base : Int64 = 10i64) : Int64?
     case v
     when Int64 then v
     when Float64 then v.to_i64
     when Bool then v ? 1i64 : 0i64
     when String
       s = v.strip
-      s.empty? ? nil : (s.to_i64? || s.to_f64?.try(&.to_i64))
+      if s.empty?
+        nil
+      elsif base == 10
+        s.to_i64? || s.to_f64?.try(&.to_i64)
+      elsif s.starts_with?("0x") || s.starts_with?("0X")
+        s[2..].to_i64?(16)
+      elsif s.starts_with?("0o") || s.starts_with?("0O")
+        s[2..].to_i64?(8)
+      elsif s.starts_with?("0b") || s.starts_with?("0B")
+        s[2..].to_i64?(2)
+      else
+        s.to_i64?(base)
+      end
     else nil
     end
   end
@@ -464,7 +554,39 @@ module KrikriJinja
     return nil unless name
     case raw = obj.raw
     when Hash then raw[name]?
-    when LoopObject then raw.to_ctx_hash[name]?
+    when LoopObject
+      case name
+      when "cycle"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("cycle") do |args, _k, _c|
+          args[raw.index % args.size]
+        end)
+      when "changed"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("changed") do |args, _k, _c|
+          current = args[0]?
+          changed = raw.last_changed.nil? || !KrikriJinja.values_equal(raw.last_changed.not_nil!, current || AnyValue.new(nil))
+          raw.last_changed = current
+          AnyValue.new(changed)
+        end)
+      else
+        raw.to_ctx_hash[name]?
+      end
+    when LoopCallable
+      case name
+      when "cycle"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("cycle") do |args, _k, _c|
+          idx = raw.index % args.size
+          args[idx]
+        end)
+      when "changed"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("changed") do |args, _k, _c|
+          current = args[0]?
+          changed = raw.last_changed.nil? || !KrikriJinja.values_equal(raw.last_changed.not_nil!, current || AnyValue.new(nil))
+          raw.last_changed = current
+          AnyValue.new(changed)
+        end)
+      else
+        raw.to_ctx_hash[name]?
+      end
     when Namespace then raw.data[name]?
     when Array, String
       case name

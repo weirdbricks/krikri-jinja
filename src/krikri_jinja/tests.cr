@@ -23,7 +23,7 @@ module KrikriJinja
   register_test("sequence") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) }
   register_test("iterable") { |v, _a, _k, _c| v.raw.is_a?(Array) || v.raw.is_a?(String) || v.raw.is_a?(Hash) }
   register_test("callable") { |v, _a, _k, _c| v.raw.is_a?(Callable) }
-  register_test("sameas") { |v, args, _k, _c| v.raw.class == args[0].raw.class && values_equal(v, args[0]) }
+  register_test("sameas") { |v, args, _k, _c| same_as?(v.raw, args[0].raw) }
   register_test("true") { |v, _a, _k, _c| v.raw == true }
   register_test("false") { |v, _a, _k, _c| v.raw == false }
   register_test("eq") { |v, args, _k, _c| values_equal(v, args[0]) }
@@ -44,8 +44,21 @@ module KrikriJinja
   register_test("in") { |v, args, _k, _c| contains?(args[0], v) }
   register_test("lower") { |v, _a, _k, _c| v.raw.is_a?(String) && v.raw.as(String) == v.raw.as(String).downcase }
   register_test("upper") { |v, _a, _k, _c| v.raw.is_a?(String) && v.raw.as(String) == v.raw.as(String).upcase }
-  register_test("escaped") { |_v, _a, _k, _c| false }
-  register_test("filter") { |_v, _a, _k, _c| false }
+  register_test("escaped") { |v, _a, _k, _c| v.raw.is_a?(Markup) }
+  register_test("filter") { |v, _a, _k, _c| v.raw.is_a?(String) && !!BUILTIN_FILTERS[v.raw.as(String)]? }
+  register_test("test") { |v, _a, _k, _c| v.raw.is_a?(String) && !!BUILTIN_TESTS[v.raw.as(String)]? }
+
+  private def self.same_as?(a : AnyV, b : AnyV) : Bool
+    case {a, b}
+    when {Nil, Nil} then true
+    when {Bool, Bool} then a == b
+    when {Markup, Markup} then a.same?(b)
+    when {Callable, Callable} then a.same?(b)
+    when {Int64, Int64} then a == b
+    when {String, String} then a.same?(b) || a == b
+    else false
+    end
+  end
 
   private def self.int_of(v : AnyValue) : Int64
     case raw = v.raw

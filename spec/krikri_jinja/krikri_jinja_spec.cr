@@ -220,8 +220,16 @@ describe KrikriJinja do
   end
 
   describe "whitespace behavior" do
-    it "keeps newlines after var tags but handles basic trimming" do
-      KrikriJinja.render("a\n{% if true %}\nb\n{% endif %}\n").should eq("a\n\nb\n\n")
+    it "strips the final newline by default, keeps it on request" do
+      KrikriJinja.render("a\n{% if true %}\nb\n{% endif %}\n").should eq("a\n\nb\n")
+      opts = KrikriJinja::LexerOptions.new(keep_trailing_newline: true)
+      KrikriJinja::Engine.new(nil, options: opts).render_string("x\n").should eq("x\n")
+    end
+
+    it "supports trim_blocks and lstrip_blocks" do
+      opts = KrikriJinja::LexerOptions.new(trim_blocks: true, lstrip_blocks: true)
+      engine = KrikriJinja::Engine.new(nil, options: opts)
+      engine.render_string("a\n{% if true %}\nb\n{% endif %}\nc").should eq("a\nb\nc")
     end
   end
 end
