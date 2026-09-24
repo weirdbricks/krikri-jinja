@@ -251,6 +251,9 @@ module KrikriJinja
         if accept_op("=")
           default = parse_expression
         end
+        if pname == "caller" && default.nil?
+          raise TemplateError.new("the special 'caller' argument must be omitted or given a default", tok.line)
+        end
         params << {pname, default}
         unless accept_op(",")
           expect_op(")")

@@ -248,6 +248,7 @@ module KrikriJinja
     killwords = (kwargs["killwords"]? || AnyValue.new(false)).raw == true || (args[1]?.try(&.raw) == true)
     end_str = kwargs["end"]?.try(&.raw.as?(String)) || args[2]?.try(&.raw.as?(String)) || "..."
     leeway = (args[3]?.try(&.raw.as?(Int64)) || kwargs["leeway"]?.try(&.raw.as?(Int64)) || 5i64)
+    raise TemplateError.new("expected length >= #{end_str.size}, got #{length}", 0) if length < end_str.size
     result = if s.size <= length + leeway
                s
              else
@@ -539,7 +540,8 @@ module KrikriJinja
     result = if pad <= 0
                s
              else
-               left = pad // 2
+               # python str.center: left = pad // 2 + (pad & width & 1)
+               left = pad // 2 + ((pad & width) & 1)
                (" " * left) + s + (" " * (pad - left))
              end
     AnyValue.new(result)
@@ -935,7 +937,14 @@ module KrikriJinja
                width = args[0]?.try(&.raw.as?(Int64)) || 0i64
                fill = args[1]?.try(&.raw.as?(String)) || " "
                fc = fill.empty? ? ' ' : fill[0]
-               AnyValue.new(s.center(width, fc))
+               rem = width - s.size
+               if rem <= 0
+                 AnyValue.new(s)
+               else
+                 # python: left = rem // 2 + (rem & width & 1)
+                 left = rem // 2 + ((rem & width) & 1)
+                 AnyValue.new((fc.to_s * left) + s + (fc.to_s * (rem - left)))
+               end
              end
            when "islower"
              ->(_args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
