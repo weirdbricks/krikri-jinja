@@ -72,6 +72,7 @@ module KrikriJinja
     items = case raw = v.raw
             when Array then raw
             when GeneratorValue then raw.items
+            when TupleValue then raw.items
             when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
             when Hash then raw.keys.map { |k| AnyValue.new(k) }
             else
@@ -549,7 +550,6 @@ module KrikriJinja
   register_filter("pprint") { |v, _a, _k, _c| AnyValue.new(stringify(v)) }
   register_filter("urlize") do |v, args, kwargs, _c|
     text = stringify(v)
-    scheme_re = /^https?:\/\//
     email_re = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/
     pieces = text.split(/(\s+)/)
     rendered = pieces.map do |word|
@@ -562,9 +562,16 @@ module KrikriJinja
           trail = "#{token[-1]}#{trail}"
           token = token[0...-1]
         end
-        if scheme_re.matches?(token) || token.starts_with?("www.")
-          href = token.starts_with?("www.") ? "https://#{token}" : token
-          %(<a href="#{KrikriJinja.escape_html(href)}" rel="noopener">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
+        href : String? = nil
+        if token.starts_with?("http://") || token.starts_with?("https://")
+          href = token
+        elsif token.downcase.starts_with?("http://") || token.downcase.starts_with?("https://")
+          href = "https://#{token}"
+        elsif token.starts_with?("www.")
+          href = "https://#{token}"
+        end
+        if href
+          %(<a href="#{KrikriJinja.escape_html(href.not_nil!)}" rel="noopener">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
         elsif email_re.matches?(token)
           %(<a href="mailto:#{KrikriJinja.escape_html(token)}">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
         else
@@ -833,8 +840,8 @@ module KrikriJinja
            when "zfill"
              ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
                width = args[0]?.try(&.raw.as?(Int64)) || 0i64
-               sign = s.starts_with?("-") ? "-" : ""
-               digits = s.lstrip('-')
+               sign = s.starts_with?("-") ? "-" : (s.starts_with?("+") ? "+" : "")
+               digits = s.lstrip('-').lstrip('+')
                AnyValue.new(sign + digits.rjust(width - sign.size, '0'))
              end
            when "ljust", "rjust"
@@ -926,7 +933,7 @@ module KrikriJinja
              end
            when "isalpha"
              ->(_args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
-               AnyValue.new(!s.empty? && s.chars.all? { |c| c.ascii_letter? })
+               AnyValue.new(!s.empty? && s.chars.all? { |c| c.letter? })
              end
            when "format"
              ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
@@ -1005,6 +1012,14 @@ module KrikriJinja
       when "items"
         AnyValue.new(KrikriJinja::SimpleCallable.new("items") do |_a, _k, _c|
           AnyValue.new(raw.map { |k, x| AnyValue.new(TupleValue.new([KrikriJinja.decode_key(k), x])) })
+        end)
+      when "get"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("get") do |args, _k, _c|
+          key = args[0]
+          enc = KrikriJinja.dict_key(key)
+          alt = KrikriJinja.dict_key_alt(key)
+          found = raw[enc]? || (alt ? raw[alt]? : nil)
+          found || args[1]? || AnyValue.new(nil)
         end)
       else raw[name]?
       end

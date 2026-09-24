@@ -690,13 +690,16 @@ module KrikriJinja
         # macro definitions stay private to the included template.
         @ctx.push_scope
         old_noloop = @ctx.hide_loop_var
+        old_nosuper = @ctx.hide_super
         @ctx.hide_loop_var = true
+        @ctx.hide_super = true
         begin
           sub_eval = Evaluator.new(@ctx, @engine)
           sub_eval.render_template(sub_node)
           @out << sub_eval.output.to_s
         ensure
           @ctx.hide_loop_var = old_noloop
+          @ctx.hide_super = old_nosuper
           @ctx.pop_scope
         end
       else
