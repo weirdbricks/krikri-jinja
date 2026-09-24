@@ -92,6 +92,9 @@ module KrikriJinja
   end
 
   def self.format_float(v : Float64) : String
+    return "inf" if v.infinite? == 1
+    return "-inf" if v.infinite? == -1
+    return "nan" if v.nan?
     return "-0.0" if v == 0.0 && (1.0 / v) < 0
     # match Python's repr: integral floats get ".0"; scientific notation
     # thresholds and 2-digit exponents follow Python too.
@@ -143,6 +146,9 @@ module KrikriJinja
     elsif x.is_a?(Hash) && y.is_a?(Hash)
       return false unless x.size == y.size
       x.all? { |k, v| y.has_key?(k) && values_equal(v, y[k]) }
+    elsif x.is_a?(TupleValue) && y.is_a?(TupleValue)
+      return false unless x.items.size == y.items.size
+      x.items.zip(y.items).all? { |p, q| values_equal(p, q) }
     elsif (x.is_a?(Bool) && y.is_a?(Int64)) || (x.is_a?(Int64) && y.is_a?(Bool))
       (x.is_a?(Bool) ? (x ? 1 : 0) : x.as(Int64)) == (y.is_a?(Bool) ? (y ? 1 : 0) : y.as(Int64))
     elsif (x.is_a?(Bool) && y.is_a?(Float64))
@@ -196,6 +202,8 @@ module KrikriJinja
       i.is_a?(String) && c.includes?(i)
     when Array
       c.any? { |x| values_equal(x, item) }
+    when TupleValue
+      c.items.any? { |x| values_equal(x, item) }
     when Hash
       c.has_key?(dict_key(item))
     when Undefined
