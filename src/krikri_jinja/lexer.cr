@@ -468,7 +468,7 @@ module KrikriJinja
         return i
       end
       hex_mode = false
-      while i < src.size && src[i].number?
+      while i < src.size && (src[i].number? || src[i] == '_')
         i += 1
       end
       if i < src.size && (src[i] == 'e' || src[i] == 'E') && !hex_mode
@@ -500,7 +500,7 @@ module KrikriJinja
         end
         toks << Token.new(TokenType::Float, src[start...i], line)
       else
-        toks << Token.new(TokenType::Int, src[start...i], line)
+        toks << Token.new(TokenType::Int, src[start...i].delete('_'), line)
       end
       i
     end
