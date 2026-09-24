@@ -5620,5 +5620,564 @@
   "name": "namespace positional dict",
   "template": "{% set ns = namespace({'a': 1}) %}{{ ns.a }}",
   "data": {}
+ },
+ {
+  "name": "upper none",
+  "template": "{{ none | upper }}",
+  "data": {}
+ },
+ {
+  "name": "lower none",
+  "template": "{{ none | lower }}",
+  "data": {}
+ },
+ {
+  "name": "title none",
+  "template": "{{ none | title }}",
+  "data": {}
+ },
+ {
+  "name": "trim none",
+  "template": "{{ none | trim }}|",
+  "data": {}
+ },
+ {
+  "name": "capitalize none",
+  "template": "{{ none | capitalize }}",
+  "data": {}
+ },
+ {
+  "name": "replace none",
+  "template": "{{ none | replace('a', 'b') }}",
+  "data": {}
+ },
+ {
+  "name": "length none",
+  "template": "{{ none | length }}",
+  "data": {}
+ },
+ {
+  "name": "first none",
+  "template": "{{ none | first }}",
+  "data": {}
+ },
+ {
+  "name": "list none",
+  "template": "{{ none | list }}",
+  "data": {}
+ },
+ {
+  "name": "join none",
+  "template": "{{ none | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "sort none",
+  "template": "{{ none | sort }}",
+  "data": {}
+ },
+ {
+  "name": "reverse none",
+  "template": "{{ none | reverse }}",
+  "data": {}
+ },
+ {
+  "name": "escape none",
+  "template": "{{ none | escape }}",
+  "data": {}
+ },
+ {
+  "name": "int true",
+  "template": "{{ true | int }} {{ false | int }}",
+  "data": {}
+ },
+ {
+  "name": "abs float int",
+  "template": "{{ -2.5 | abs }} {{ -2 | abs }}",
+  "data": {}
+ },
+ {
+  "name": "round on int",
+  "template": "{{ 5 | round }}",
+  "data": {}
+ },
+ {
+  "name": "upper markup",
+  "template": "{{ '<x>' | upper }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "striptags markup",
+  "template": "{{ ('<b>x</b>' | safe) | striptags }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "urlencode markup",
+  "template": "{{ ('a b' | safe) | urlencode }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "str find negative",
+  "template": "{{ 'abcabc'.find('b', -3) }} {{ 'abc'.find('b', 5) }}",
+  "data": {}
+ },
+ {
+  "name": "str split maxsplit zero",
+  "template": "{{ 'a,b,c'.split(',', 0) | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str rsplit maxsplit zero",
+  "template": "{{ 'a,b,c'.rsplit(',', 0) | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str count zero sub",
+  "template": "{{ 'abc'.count('') }}",
+  "data": {}
+ },
+ {
+  "name": "str replace empty old",
+  "template": "{{ 'abc'.replace('', '-') }}",
+  "data": {}
+ },
+ {
+  "name": "str ljust zero",
+  "template": "{{ 'a'.ljust(0) }}|",
+  "data": {}
+ },
+ {
+  "name": "str center small",
+  "template": "{{ 'abc'.center(2) }}",
+  "data": {}
+ },
+ {
+  "name": "str zfill zero",
+  "template": "{{ 'a'.zfill(0) }}",
+  "data": {}
+ },
+ {
+  "name": "str isdigit empty",
+  "template": "{{ ''.isdigit() }} {{ ''.isalpha() }}",
+  "data": {}
+ },
+ {
+  "name": "str expandtabs multi",
+  "template": "{{ 'a\\t\\tb'.expandtabs(3) }}",
+  "data": {}
+ },
+ {
+  "name": "str splitlines cr only",
+  "template": "{{ 'a\\rb'.splitlines() | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str rpartition no sep",
+  "template": "{{ 'abc'.rpartition('x') | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str partition multi sep",
+  "template": "{{ 'a=b=c'.partition('=') | join('|') }} {{ 'a=b=c'.rpartition('=') | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str casefold digits",
+  "template": "{{ 'A1b'.casefold() }}",
+  "data": {}
+ },
+ {
+  "name": "tojson markup",
+  "template": "{{ ('<x>' | safe) | tojson }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "tojson tuple",
+  "template": "{{ (1, 2) | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "tojson key order",
+  "template": "{{ {'b': 1, 'a': 2, 'A': 3} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "tojson slash",
+  "template": "{{ 'a/b' | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "tojson control char",
+  "template": "{{ 'a\\u0001b' | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "tojson int keys",
+  "template": "{{ {1: 'a'} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode dict unicode",
+  "template": "{{ {'k\u00e9y': 'v\u00e9l'} | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "loop outside for",
+  "template": "{{ loop | default('none') }}",
+  "data": {}
+ },
+ {
+  "name": "caller outside call",
+  "template": "{{ caller | default('none') }}",
+  "data": {}
+ },
+ {
+  "name": "varargs outside macro",
+  "template": "{{ varargs | length }}",
+  "data": {}
+ },
+ {
+  "name": "loop in nested for shadow",
+  "template": "{% for i in [1] %}{% for j in [2] %}{{ i }}{{ j }}{% endfor %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "set inside for stays",
+  "template": "{% for i in [1] %}{% set x = i %}{% endfor %}{{ x | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "namespace in loop",
+  "template": "{% set ns = namespace(n=0) %}{% for i in [1,2,3] %}{% set ns.n = ns.n + i %}{% endfor %}{{ ns.n }}",
+  "data": {}
+ },
+ {
+  "name": "for else on filtered empty",
+  "template": "{% for x in [1,2,3] if false %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for over string with filter",
+  "template": "{% for c in 'ab' | upper %}{{ c }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "recursive with else",
+  "template": "{% for i in [] recursive %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.changed objects",
+  "template": "{% for x in ['a','a','b'] %}{{ loop.changed(x) }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro call in attr chain",
+  "template": "{% macro m() %}x{% endmacro %}{{ m() | upper }}",
+  "data": {}
+ },
+ {
+  "name": "macro returning list",
+  "template": "{% macro m() %}{{ [1,2] }}{% endmacro %}{{ m() }}",
+  "data": {}
+ },
+ {
+  "name": "macro with expression default",
+  "template": "{% macro m(a, b=a ~ '!') %}{{ b }}{% endmacro %}{{ m('hi') }}",
+  "data": {}
+ },
+ {
+  "name": "macro kwargs without call",
+  "template": "{% macro m(a=1) %}{{ a }}{% endmacro %}{{ m(b=2) }}",
+  "data": {}
+ },
+ {
+  "name": "call nested macros",
+  "template": "{% macro a() %}{{ caller() }}{% endmacro %}{% call a() %}in{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "macro access loop outer",
+  "template": "{% for x in [1] %}{% macro m() %}{{ x }}{% endmacro %}{{ m() }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "extends with expression name",
+  "template": "{% extends name %}{% block b %}C{% endblock %}",
+  "data": {
+   "name": "base.html"
+  },
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "block with scoped",
+  "template": "{% extends 'base.html' %}{% block b scoped %}C{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "three level super chain",
+  "template": "{% extends 'mid.html' %}{% block b %}3({{ super() }}){% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}1{% endblock %}",
+   "mid.html": "{% extends 'base.html' %}{% block b %}2({{ super() }}){% endblock %}"
+  }
+ },
+ {
+  "name": "include in for with macro",
+  "template": "{% for i in [1,2] %}{% include 'p.html' %}{% endfor %}",
+  "data": {},
+  "templates": {
+   "p.html": "{{ i }}"
+  }
+ },
+ {
+  "name": "import then from same",
+  "template": "{% import 'm.html' as m %}{% from 'm.html' import v %}{{ m.v }}{{ v }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% set v = 'V' %}"
+  }
+ },
+ {
+  "name": "extends missing error",
+  "template": "{% extends 'nope.html' %}",
+  "data": {}
+ },
+ {
+  "name": "marker on for",
+  "template": "{% for i in [1,2] -%}\n {{ i }}\n{%- endfor %}",
+  "data": {}
+ },
+ {
+  "name": "marker on set line",
+  "template": "x {%- set y = 2 -%} y{{ y }}",
+  "data": {}
+ },
+ {
+  "name": "trim blocks plus marker",
+  "template": "a\n{%+ if true %}\nb\n{% endif %}",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "lstrip marker on var",
+  "template": "x\n  {{- 1 }}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "nested raw in if",
+  "template": "{% if true %}{% raw %}{{ x }}{% endraw %}{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "comment between blocks",
+  "template": "{% if true %}a{# c #}{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "float compare big",
+  "template": "{{ 1e308 * 10 }}",
+  "data": {}
+ },
+ {
+  "name": "int neg literal",
+  "template": "{{ - - 5 }} {{ - -5 }}",
+  "data": {}
+ },
+ {
+  "name": "chained add sub",
+  "template": "{{ 1 + 2 - 3 + 4 }}",
+  "data": {}
+ },
+ {
+  "name": "mixed mul div",
+  "template": "{{ 6 / 2 * 3 }}",
+  "data": {}
+ },
+ {
+  "name": "pow float frac",
+  "template": "{{ 4 ** 0.5 }} {{ 8 ** (1/3) | round(2) }}",
+  "data": {}
+ },
+ {
+  "name": "mod negative float",
+  "template": "{{ -7.5 % 2 }}",
+  "data": {}
+ },
+ {
+  "name": "floor div float neg",
+  "template": "{{ -7.5 // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "compare float int",
+  "template": "{{ 1 == 1.0 }} {{ 1 < 1.5 }} {{ 2 > 1.9 }}",
+  "data": {}
+ },
+ {
+  "name": "bool in range",
+  "template": "{{ range(true) | length }}",
+  "data": {}
+ },
+ {
+  "name": "division by negative",
+  "template": "{{ 7 / -2 }} {{ 7 // -2 }} {{ 7 % -2 }}",
+  "data": {}
+ },
+ {
+  "name": "if not in",
+  "template": "{% if 1 not in [1] %}a{% else %}b{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "if is not test",
+  "template": "{% if none is not none %}a{% else %}b{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "set attr on undefined",
+  "template": "{% set missing.x = 1 %}",
+  "data": {}
+ },
+ {
+  "name": "set item on int",
+  "template": "{% set x = 5 %}{% set x[0] = 1 %}",
+  "data": {}
+ },
+ {
+  "name": "with dict unpack",
+  "template": "{% with a, b = 1, 2 %}{{ a }}{{ b }}{% endwith %}",
+  "data": {}
+ },
+ {
+  "name": "for over none",
+  "template": "{% for x in none %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for over int",
+  "template": "{% for x in 5 %}x{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "elif after else error",
+  "template": "{% if false %}a{% else %}b{% elif true %}c{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "range equal bounds",
+  "template": "{% for i in range(2, 2) %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "range reverse",
+  "template": "{% for i in range(3, 0) %}{{ i }}{% endfor %}|",
+  "data": {}
+ },
+ {
+  "name": "cycler reset then current",
+  "template": "{% set c = cycler('a', 'b') %}{{ c.next() }}{{ c.reset() }}{{ c.current }}",
+  "data": {}
+ },
+ {
+  "name": "joiner reused",
+  "template": "{% set j = joiner('-') %}{{ j() }}{{ j() }}{{ j() }}",
+  "data": {}
+ },
+ {
+  "name": "namespace bool set",
+  "template": "{% set ns = namespace() %}{% set ns.flag = true %}{{ ns.flag }}",
+  "data": {}
+ },
+ {
+  "name": "dict from dict",
+  "template": "{{ dict({'a': 1}) }}",
+  "data": {}
+ },
+ {
+  "name": "namespace with context",
+  "template": "{% set ns = namespace(x=1) %}{% with y = 2 %}{% set ns.x = y %}{% endwith %}{{ ns.x }}",
+  "data": {}
+ },
+ {
+  "name": "deep filter chain",
+  "template": "{{ '  ab  ' | trim | upper | reverse | length }}",
+  "data": {}
+ },
+ {
+  "name": "filter with block var",
+  "template": "{% set x = 'ab' %}{{ x | upper }}",
+  "data": {}
+ },
+ {
+  "name": "test with filter arg",
+  "template": "{{ ['a'] | first is eq 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "getattr chain method",
+  "template": "{{ 'abc'.upper().lower() }}",
+  "data": {}
+ },
+ {
+  "name": "method on literal",
+  "template": "{{ 5.to_string }}",
+  "data": {}
+ },
+ {
+  "name": "getitem on undefined error",
+  "template": "{{ missing['k'] }}",
+  "data": {}
+ },
+ {
+  "name": "slice undefined error",
+  "template": "{{ missing[1:] }}",
+  "data": {}
+ },
+ {
+  "name": "negative tuple index",
+  "template": "{{ (1,2,3)[-1] }}",
+  "data": {}
+ },
+ {
+  "name": "empty call parens",
+  "template": "{{ range }}{{ range() is iterable }}",
+  "data": {}
+ },
+ {
+  "name": "dict access after filter",
+  "template": "{{ {'a': {'b': 'c'}}['a']['b'] }}",
+  "data": {}
+ },
+ {
+  "name": "concat markup autoescape",
+  "template": "{{ 'a' ~ ('<b>' | safe) }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
  }
 ]
