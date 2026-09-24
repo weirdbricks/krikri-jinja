@@ -79,12 +79,54 @@ module KrikriJinja
 
     def initialize(source : String, @options : LexerOptions = LexerOptions.new)
       src : String = source
+      # jinja normalizes \r\n and \r to \n when reading the source.
+      src = src.gsub("\r\n", "\n").gsub('\r', '\n')
       # keep_trailing_newline: by default one trailing newline is removed,
       # matching the documented environment default.
       unless @options.keep_trailing_newline
-        src = src.sub(/\r?\n\Z/, "")
+        src = src.sub(/\n\Z/, "")
       end
       @source = src
+    end
+
+    # Finds the tag closer starting at `start`, skipping quoted strings and
+    # balancing braces when the closer itself starts with "}".
+    def self.scan_tag_end(src : String, start : Int32, delim_end : String) : Tuple(Int32?, Bool)
+      depth = 0
+      i = start
+      balance = delim_end[0] == '}'
+      right_strip = false
+      while i < src.size
+        c = src[i]
+        if c == '\'' || c == '"'
+          quote = c
+          i += 1
+          while i < src.size && src[i] != quote
+            i += src[i] == '\\' ? 2 : 1
+          end
+          i += 1
+        elsif c == '{'
+          depth += 1 if balance
+          i += 1
+        elsif c == '}'
+          if balance && depth > 0
+            depth -= 1
+            i += 1
+          else
+            if src[i, delim_end.size] == delim_end
+              rs = i > start && src[i - 1] == '-'
+              return {rs ? i - 1 : i, rs}
+            end
+            i += 1
+          end
+        elsif src[i, delim_end.size] == delim_end
+          rs = i > start && src[i - 1] == '-'
+          return {rs ? i - 1 : i, rs}
+        else
+          i += 1
+        end
+      end
+      {nil, false}
     end
 
     def tokens : Array(Token)
@@ -122,25 +164,18 @@ module KrikriJinja
 
         content_start = next_delim + 2
         # whitespace control marker directly after the opener: "{%-", "{{-"
-        left_strip = src[content_start]? == '-'
-        content_start += 1 if left_strip
-
-        # find the closer, tolerating "-}}" / "-%}" (marker glued to closer)
-        close_idx = src.index(delim_end, content_start)
-        right_strip = false
-        if alt_idx = src.index("-" + delim_end, content_start)
-          if close_idx.nil? || alt_idx <= close_idx
-            # only treat as marker if the "-" belongs to this tag (the closer
-            # is not preceded by an expression token boundary confusion) -
-            # "-" + closer must be contiguous and not part of e.g. "1 -}} "
-            # it always is when contiguous; a plain closer earlier in the
-            # tag would win above.
-            if close_idx.nil? || alt_idx < close_idx || src[close_idx - 1]? == '-'
-              close_idx = alt_idx
-              right_strip = true
-            end
-          end
+        # and "+{%"-style plus markers that disable whitespace control
+        left_strip = false
+        plus_left = false
+        case src[content_start]?
+        when '-' then left_strip = true
+        when '+' then plus_left = true
         end
+        content_start += 1 if left_strip || plus_left
+
+        # find the closer, skipping string literals and (for "}}" closers)
+        # balancing braces so dict literals with "}}" endings work
+        close_idx, right_strip = Lexer.scan_tag_end(src, content_start, delim_end)
         unless close_idx
           raise TemplateError.new("unclosed #{opening.inspect} tag", line)
         end
@@ -196,10 +231,11 @@ module KrikriJinja
             if right_strip
               raw_text = raw_text.sub(/\A\s+/, "")
             end
-            if left_strip
+            if left_strip || (opts.lstrip_blocks && !plus_left)
               if text_count_before > 0 && out_tokens[text_count_before - 1].type == TokenType::Text
-                stripped_prev = out_tokens[text_count_before - 1].value.sub(/\s+\Z/, "")
+                stripped_prev = left_strip ? out_tokens[text_count_before - 1].value.sub(/\s+\Z/, "") : out_tokens[text_count_before - 1].value.sub(/[ \t]+\Z/, "")
                 out_tokens[text_count_before - 1] = Token.new(TokenType::Text, stripped_prev, out_tokens[text_count_before - 1].line)
+                out_tokens.delete_at(text_count_before - 1) if stripped_prev.empty? && opts.lstrip_blocks && !left_strip
               end
             end
             raw_text = raw_text.sub(/\s+\Z/, "") if end_left_strip
@@ -226,8 +262,8 @@ module KrikriJinja
         line += src[next_delim...after].count('\n')
 
         # trim_blocks: a block tag eats the newline that immediately follows
-        # it (var and comment tags do not).
-        if opts.trim_blocks && opening == opts.block_start
+        # it (var and comment tags do not; comments included per jinja).
+        if opts.trim_blocks && (opening == opts.block_start || opening == opts.comment_start)
           if src[after]? == '\n'
             after += 1
             line += 1
@@ -239,7 +275,7 @@ module KrikriJinja
 
         # lstrip_blocks: strip spaces/tabs from the end of the text token
         # that precedes a block tag, but only up to the line start.
-        if opts.lstrip_blocks && opening == opts.block_start
+        if opts.lstrip_blocks && opening == opts.block_start && !plus_left
           idx = text_count_before > 0 ? text_count_before - 1 : nil
           if idx && out_tokens[idx].type == TokenType::Text
             tok = out_tokens[idx]
@@ -365,6 +401,30 @@ module KrikriJinja
             when '\\' then buf << '\\'
             when '"' then buf << '"'
             when '\'' then buf << '\''
+            when 'u'
+              if i + 4 < src.size && (hex = src[(i + 1)..(i + 4)])
+                cp = hex.to_i32?(16)
+                if cp
+                  buf << cp.unsafe_chr
+                  i += 4
+                else
+                  buf << '\\' << 'u'
+                end
+              else
+                buf << '\\' << 'u'
+              end
+            when 'x'
+              if i + 2 < src.size && (hex = src[(i + 1)..(i + 2)])
+                cp = hex.to_i32?(16)
+                if cp
+                  buf << cp.unsafe_chr
+                  i += 2
+                else
+                  buf << '\\' << 'x'
+                end
+              else
+                buf << '\\' << 'x'
+              end
             else
               buf << '\\' << src[i]
             end
