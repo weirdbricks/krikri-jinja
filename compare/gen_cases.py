@@ -1414,6 +1414,103 @@ add("tuple nested index", "{{ ((1, 2), (3, 4))[1][0] }}")
 add("dict length", "{{ {'a': 1, 'b': 2} | length }}")
 add("empty dict truthiness", "{% if {} %}a{% else %}b{% endif %} {% if [0] %}c{% endif %}")
 
+
+# ================= edge-case expansion (round 8) =================
+
+# --- wordwrap / truncate deep options ---------------------------------------
+add("wordwrap wrapstring custom", "{{ 'a b c' | wordwrap(4, true, '--') }}")
+add("wordwrap single long", "{{ 'abcdef' | wordwrap(3) }}")
+add("wordwrap exact fit", "{{ 'ab cd' | wordwrap(5) }}|")
+add("wordwrap empty", "{{ '' | wordwrap(5) }}|")
+add("truncate false killwords space", "{{ 'a b c d' | truncate(6, false, '~', 0) }}")
+add("truncate leeway boundary", "{{ 'abcdefgh' | truncate(5, true, '...', 3) }}")
+add("truncate unicode", "{{ 'héllo wörld' | truncate(7, true, '…', 0) }}")
+
+# --- urlencode deep -----------------------------------------------------------
+add("urlencode tilde", "{{ '~' | urlencode }}")
+add("urlencode parens", "{{ '(a)' | urlencode }}")
+add("urlencode apostrophe", "{{ \"'\" | urlencode }}")
+add("urlencode star", "{{ '*' | urlencode }}")
+add("urlencode exclaim", "{{ '!' | urlencode }}")
+add("urlencode dict empty", "{{ {} | urlencode }}|")
+add("urlencode bool val", "{{ {'a': true} | urlencode }}")
+add("urlencode int val", "{{ {'a': 5} | urlencode }}")
+
+# --- loop edge -----------------------------------------------------------------
+add("loop index0 last combo", "{% for i in [1,2] %}{{ loop.index0 }}{{ loop.last }} {% endfor %}")
+add("loop revindex0", "{% for i in [1,2,3] %}{{ loop.revindex0 }}{% endfor %}")
+add("loop depth recursive triple", "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("recursive loop length", "{% for i in [1] recursive %}{{ loop.length }}{{ loop([2]) if false }}{% endfor %}")
+add("for filtered with loop", "{% for i in [1,2,3] if i != 2 %}{{ loop.index }}:{{ i }} {% endfor %}")
+add("for filtered length", "{% for i in [1,2,3] if i != 2 %}{{ loop.length }}{% endfor %}")
+add("nested for with same var", "{% for i in [1,2] %}{% for i in [3] %}{{ i }}{% endfor %}{{ i }}{% endfor %}")
+add("for else break via slice", "{% for x in [] %}x{% else %}none{% endfor %}")
+add("loop over chars unicode", "{% for c in 'éx' %}{{ c }}{% endfor %}")
+add("cycle with undefined args", "{% for i in [1,2] %}{{ loop.cycle(missing, 'b') | default('d') }}{% endfor %}")
+
+# --- macro / caller deep ---------------------------------------------------------
+add("macro caller nested two", "{% macro outer() %}O[{{ caller() }}]{% endmacro %}{% call outer() %}i{% endcall %}")
+add("macro varargs and kwargs both", "{% macro m() %}{{ varargs | join(',') }}/{{ kwargs | dictsort | join(',') }}{% endmacro %}{{ m(1, x=2) }}")
+add("macro default none arg", "{% macro m(a=none) %}{{ a is none }}{% endmacro %}{{ m() }} {{ m(1) }}")
+add("macro inside for reuse", "{% for i in [1,2] %}{% macro m() %}M{{ i }}{% endmacro %}{{ m() }}{% endfor %}")
+add("call body with loop var", "{% macro m() %}{{ caller() }}{% endmacro %}{% for i in [1] %}{% call m() %}c{{ i }}{% endcall %}{% endfor %}")
+add("macro return used in expr", "{% macro m() %}5{% endmacro %}{{ m() + 1 }}")
+add("macro empty body", "{% macro m() %}{% endmacro %}[{{ m() }}]")
+
+# --- inheritance deep -------------------------------------------------------------
+add("extends with set after block", "{% extends 'base.html' %}{% block b %}B{% endblock %}{% set x = 1 %}", templates={
+    "base.html": "{% block b %}{% endblock %}"})
+add("include with macro call arg", "{% include 'p.html' %}", {"v": "V"}, templates={
+    "p.html": "{{ v | upper }}"})
+add("super then text", "{% extends 'base.html' %}{% block b %}a{{ super() }}b{% endblock %}", templates={
+    "base.html": "{% block b %}S{% endblock %}"})
+add("block self-nesting", "{% block a %}{% block b %}x{% endblock %}{% endblock %}")
+add("import within if", "{% if true %}{% import 'm.html' as m %}{{ m.v }}{% endif %}", templates={
+    "m.html": "{% set v = 'IV' %}"})
+add("include list fallback second", "{% include ['nope.html', 'yes.html'] %}", templates={
+    "yes.html": "Y"})
+
+# --- whitespace deep ------------------------------------------------------------------
+add("lstrip tabs", "x\n\t{% if true %}y{% endif %}", lstrip_blocks=True)
+add("marker no-op plain", "{% set x = 1 %}{{ x }}")
+add("marker on include", "a\n  {%- include 'p.html' %}", templates={"p.html": "P"})
+add("trim blocks with space after tag", "{% if true %} \nx{% endif %}", trim_blocks=True)
+add("marker both on var multiline", "a\n  {{-\n x\n -}}\n  b")
+add("raw with minus inside", "{% raw %}a -{% endraw %}")
+add("nested markers inherit", "{%- if true %}\n  {%- set x = 1 %}{{ x }}\n{%- endif %}")
+
+# --- numbers deep -----------------------------------------------------------------------
+add("float mod int", "{{ 7.5 % 2 }} {{ 7 % 2.5 }}")
+add("neg floor float", "{{ -0.5 // 1 }}")
+add("pow zero base zero", "{{ 0 ** 0 }} {{ 0 ** 1 }}")
+add("div float precision", "{{ 1 / 3 == 0.3333333333333333 }}")
+add("big int add chain", "{{ 9223372036854775807 + 9223372036854775807 }}")
+add("big int mul overflow", "{{ 9223372036854775807 * 2 }}")
+add("int compare big", "{{ 9223372036854775807 > 9223372036854775806 }}")
+add("mod chain neg", "{{ -17 % 5 }} {{ 17 % -5 }} {{ -17 % -5 }}")
+
+# --- undefined deep ------------------------------------------------------------------------
+add("undefined arithmetic compare", "{{ missing == missing }} {{ missing != 1 }}")
+add("undefined concat order", "{{ missing ~ 'a' ~ missing }}")
+add("undefined in tuple", "{{ missing in (1, 2) }}")
+add("undefined min max", "{{ [missing] | min | default('d') }}")
+add("undefined attr chain deep", "{{ a.b.c }}", {"a": {"b": {}}})
+add("undefined bool not", "{{ not missing.x }}")
+add("undefined tojson nested", "{{ {'k': [missing]} | tojson }}")
+
+# --- misc deep -------------------------------------------------------------------------------
+add("dict key int vs bool distinct", "{{ {1: 'a', true: 'b'}[1] }} {{ {1: 'a', true: 'b'}[true] }}")
+add("list eq tuple", "{{ [1] == (1,) }} {{ (1,) == [1] }}")
+add("concat tuple", "{{ 'a' ~ (1, 2) }}")
+add("markup in list repr", "{{ ['<x>'] }}", autoescape=False)
+add("filter on tuple", "{{ (1, 2) | sum }} {{ (3, 1) | min }}")
+add("sort tuple items", "{{ [(2,), (1,)] | sort | join(',') }}")
+add("length of generator via list", "{{ [1,2] | map('string') | list | length }}")
+add("test is number bool", "{{ true is number }} {{ true is integer }}")
+add("string filter on markup", "{{ ('<x>' | safe) | length }}", autoescape=False)
+add("escape length", "{{ '<x>' | escape | length }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
