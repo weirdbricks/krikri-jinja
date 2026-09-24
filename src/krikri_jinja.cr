@@ -9,7 +9,27 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.2.0"
+  VERSION = "0.3.0"
+
+  # Percent-encoding matching urllib.parse.quote (space becomes %20).
+  def self.percent_encode(s : String) : String
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~"
+    String.build do |io|
+      s.each_byte do |b|
+        c = b.chr
+        if safe.includes?(c)
+          io << c
+        else
+          io << "%" << b.to_s(16).upcase.rjust(2, '0')
+        end
+      end
+    end
+  end
+
+  # Percent-encoding matching urllib.parse.quote_plus (space becomes +).
+  def self.quote_plus(s : String) : String
+    percent_encode(s).gsub("%20", "+")
+  end
 
   def self.filesizeformat(bytes : Int64, base : Int64, prefixes : Array(String), binary : Bool) : String
     return "0 Bytes" if bytes == 0
@@ -86,6 +106,21 @@ module KrikriJinja
     when Nil, Bool, Int64, Float64, String then AnyValue.new(v)
     when Int32                             then AnyValue.new(v.to_i64)
     else AnyValue.new(v.to_s)
+    end
+  end
+
+  # Converts a JSON::Any value into a boxed template value.
+  def self.from_json_any(x : JSON::Any) : AnyValue
+    raw = x.raw
+    case raw
+    when Nil then AnyValue.new(nil)
+    when Bool, Int64, Float64, String then AnyValue.new(raw)
+    when Array then AnyValue.new(raw.map { |e| from_json_any(e) })
+    when Hash
+      h = {} of String => AnyValue
+      raw.each { |k, e| h[k] = from_json_any(e) }
+      AnyValue.new(h)
+    else AnyValue.new(raw.to_s)
     end
   end
 

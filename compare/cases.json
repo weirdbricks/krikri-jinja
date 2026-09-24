@@ -1,0 +1,972 @@
+[
+ {
+  "name": "plain",
+  "template": "hello",
+  "data": {}
+ },
+ {
+  "name": "var",
+  "template": "Hello {{ name }}!",
+  "data": {
+   "name": "world"
+  }
+ },
+ {
+  "name": "num literals",
+  "template": "{{ 1 }} {{ 2.5 }} {{ true }} {{ false }} {{ none }}",
+  "data": {}
+ },
+ {
+  "name": "undefined var renders empty",
+  "template": "[{{ missing }}]",
+  "data": {}
+ },
+ {
+  "name": "undefined attr",
+  "template": "{{ obj.missing }}|{{ obj['missing'] }}",
+  "data": {
+   "obj": {
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "none literal",
+  "template": "{{ none }} {{ x | default('d') }}",
+  "data": {
+   "x": null
+  }
+ },
+ {
+  "name": "list repr",
+  "template": "{{ [1, 'a', true, none] }}",
+  "data": {}
+ },
+ {
+  "name": "dict repr",
+  "template": "{{ {'a': 1, 'b': 'x'} }}",
+  "data": {}
+ },
+ {
+  "name": "adjacent strings",
+  "template": "{{ 'ab' 'cd' }}",
+  "data": {}
+ },
+ {
+  "name": "string escapes",
+  "template": "{{ 'a\\tb\\n\\'q\\'' }}",
+  "data": {}
+ },
+ {
+  "name": "hex oct bin",
+  "template": "{{ 0x1f }} {{ 0o17 }} {{ 0b101 }}",
+  "data": {}
+ },
+ {
+  "name": "negative float",
+  "template": "{{ -2.5 }} {{ 1e3 }}",
+  "data": {}
+ },
+ {
+  "name": "arith",
+  "template": "{{ 2 + 3 * 4 }} {{ 10 / 4 }} {{ 7 // 2 }} {{ 7 % 3 }} {{ 2 ** 10 }}",
+  "data": {}
+ },
+ {
+  "name": "neg div mod",
+  "template": "{{ -7 // 2 }} {{ -7 % 2 }} {{ 7 % -2 }} {{ 7.5 // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "unary",
+  "template": "{{ -5 + 2 }} {{ +3 }} {{ -(2 + 3) }}",
+  "data": {}
+ },
+ {
+  "name": "float mix",
+  "template": "{{ 1 + 2.5 }} {{ 3 * 0.5 }}",
+  "data": {}
+ },
+ {
+  "name": "string mult",
+  "template": "{{ 'ab' * 3 }}",
+  "data": {}
+ },
+ {
+  "name": "concat",
+  "template": "{{ 'a' ~ 1 ~ true ~ none }}",
+  "data": {}
+ },
+ {
+  "name": "power float",
+  "template": "{{ 2 ** 0.5 }} {{ 9 ** 0.5 }}",
+  "data": {}
+ },
+ {
+  "name": "compare",
+  "template": "{{ 1 < 2 }} {{ 'a' == 'a' }} {{ 2 != 2 }} {{ 3 >= 3 }} {{ 1 <= 0 }}",
+  "data": {}
+ },
+ {
+  "name": "chained",
+  "template": "{{ 1 < 2 < 3 }} {{ 1 < 2 > 5 }}",
+  "data": {}
+ },
+ {
+  "name": "in ops",
+  "template": "{{ 1 in [1,2] }} {{ 'x' not in 'abc' }} {{ 'k' in {'k': 1} }} {{ 'a' in 'abc' }}",
+  "data": {}
+ },
+ {
+  "name": "and or",
+  "template": "{{ true and 5 }} {{ false or 'x' }} {{ not false }} {{ not 0 }}",
+  "data": {}
+ },
+ {
+  "name": "cond expr",
+  "template": "{{ 'yes' if 1 > 0 else 'no' }} {{ 'y' if 0 else 'n' }} {{ 'x' if 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined truthiness",
+  "template": "{{ 'y' if missing else 'n' }}",
+  "data": {}
+ },
+ {
+  "name": "getattr getitem",
+  "template": "{{ user.name }} {{ user['name'] }}",
+  "data": {
+   "user": {
+    "name": "bob"
+   }
+  }
+ },
+ {
+  "name": "list index",
+  "template": "{{ items[1] }} {{ items[-1] }}",
+  "data": {
+   "items": [
+    10,
+    20,
+    30
+   ]
+  }
+ },
+ {
+  "name": "slices",
+  "template": "{{ 'abcdef'[1:3] }}|{{ 'abcdef'[::-1] }}|{{ [1,2,3,4][::2] }}|{{ [1,2,3,4][1:] }}",
+  "data": {}
+ },
+ {
+  "name": "str methods",
+  "template": "{{ 'hi' | upper }} {{ 'HI' | lower }} {{ 'ab' | length }} {{ 'a-b'.replace('-', '+') }} {{ 'a,b,c'.split(',') | join(';') }}",
+  "data": {}
+ },
+ {
+  "name": "list methods",
+  "template": "{{ items | first }} {{ items | last }} {{ items | length }}",
+  "data": {
+   "items": [
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ {
+  "name": "upper lower",
+  "template": "{{ 'hi' | upper }} {{ 'HI' | lower }} {{ 'hi there' | capitalize }}",
+  "data": {}
+ },
+ {
+  "name": "title trim",
+  "template": "{{ 'hELlO wORld' | title }} {{ '  x ' | trim }}",
+  "data": {}
+ },
+ {
+  "name": "replace",
+  "template": "{{ 'aaa'.replace('a', 'b', 2) }} {{ 'aXbX'.replace('X', '-') }}",
+  "data": {}
+ },
+ {
+  "name": "default",
+  "template": "{{ missing | default('d') }} {{ '' | default('d', true) }} {{ 0 | default('d', true) }} {{ none | default('n') }}",
+  "data": {}
+ },
+ {
+  "name": "join",
+  "template": "{{ [1,2,3] | join('-') }} {{ ['a','b'] | join }}",
+  "data": {}
+ },
+ {
+  "name": "join attr",
+  "template": "{{ users | join(',', attribute='name') }}",
+  "data": {
+   "users": [
+    {
+     "name": "a"
+    },
+    {
+     "name": "b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "sort",
+  "template": "{{ [3,1,2] | sort }} {{ ['b','A','c'] | sort }}",
+  "data": {}
+ },
+ {
+  "name": "sort reverse",
+  "template": "{{ [1,3,2] | sort(reverse=True) }}",
+  "data": {}
+ },
+ {
+  "name": "sort attr",
+  "template": "{{ users | sort(attribute='n') | map(attribute='n') | join('') }}",
+  "data": {
+   "users": [
+    {
+     "n": "b"
+    },
+    {
+     "n": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "sum min max",
+  "template": "{{ [1,2,3] | sum }} {{ [3,1,2] | min }} {{ [3,1,2] | max }} {{ [1.5,2] | sum }}",
+  "data": {}
+ },
+ {
+  "name": "sum start attr",
+  "template": "{{ items | sum(start=10, attribute='v') }}",
+  "data": {
+   "items": [
+    {
+     "v": 1
+    },
+    {
+     "v": 2
+    }
+   ]
+  }
+ },
+ {
+  "name": "first last",
+  "template": "{{ [1,2,3] | first }} {{ [1,2,3] | last }} {{ [] | list }}",
+  "data": {}
+ },
+ {
+  "name": "length",
+  "template": "{{ 'abcd' | length }} {{ [1,2] | length }} {{ {'a': 1} | length }}",
+  "data": {}
+ },
+ {
+  "name": "abs round",
+  "template": "{{ -4.7 | abs }} {{ 42.55 | round(1) }} {{ 2.7 | round }} {{ 4.5 | round(method='ceil') }}",
+  "data": {}
+ },
+ {
+  "name": "int float",
+  "template": "{{ '42' | int }} {{ '42.7' | int }} {{ 'x' | int(-1) }} {{ '3.14' | float }} {{ 'x' | float(0.5) }}",
+  "data": {}
+ },
+ {
+  "name": "int base",
+  "template": "{{ 'ff' | int(0, base=16) }} {{ '0x1f' | int(0, base=16) }}",
+  "data": {}
+ },
+ {
+  "name": "list filter",
+  "template": "{{ 'abc' | list | join(',') }} {{ {'a': 1} | list | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "map attr",
+  "template": "{{ users | map(attribute='name') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "name": "a"
+    },
+    {
+     "name": "b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map filter",
+  "template": "{{ [1,2,3] | map('string') | select('string') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "select reject",
+  "template": "{{ [1,2,3,4] | select('odd') | join(',') }} {{ [1,2,3,4] | reject('odd') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "selectattr",
+  "template": "{{ users | selectattr('on') | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a",
+     "on": true
+    },
+    {
+     "n": "b",
+     "on": false
+    }
+   ]
+  }
+ },
+ {
+  "name": "rejectattr",
+  "template": "{{ users | rejectattr('on') | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a",
+     "on": true
+    },
+    {
+     "n": "b",
+     "on": false
+    }
+   ]
+  }
+ },
+ {
+  "name": "selectattr test",
+  "template": "{{ users | selectattr('age', '>=', 30) | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a",
+     "age": 30
+    },
+    {
+     "n": "b",
+     "age": 20
+    }
+   ]
+  }
+ },
+ {
+  "name": "groupby",
+  "template": "{% for g in items | groupby('k') %}{{ g.grouper }}:{{ g.list | map(attribute='v') | join('') }};{% endfor %}",
+  "data": {
+   "items": [
+    {
+     "k": "a",
+     "v": 1
+    },
+    {
+     "k": "b",
+     "v": 2
+    },
+    {
+     "k": "a",
+     "v": 3
+    }
+   ]
+  }
+ },
+ {
+  "name": "unique",
+  "template": "{{ [1,2,1,3,2] | unique | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "unique attr",
+  "template": "{{ users | unique(attribute='k') | map(attribute='k') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "k": 1
+    },
+    {
+     "k": 1
+    },
+    {
+     "k": 2
+    }
+   ]
+  }
+ },
+ {
+  "name": "batch",
+  "template": "{% for row in [1,2,3,4,5] | batch(2, 0) %}[{{ row | join(',') }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "slice",
+  "template": "{% for col in [1,2,3,4,5] | slice(2, '-') %}[{{ col | join(',') }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "reverse",
+  "template": "{{ [1,2,3] | reverse | join(',') }} {{ 'abc' | reverse }}",
+  "data": {}
+ },
+ {
+  "name": "truncate",
+  "template": "{{ 'hello world' | truncate(8) }} {{ 'hello world' | truncate(8, true) }} {{ 'short' | truncate(8) }}",
+  "data": {}
+ },
+ {
+  "name": "wordcount",
+  "template": "{{ 'a b  c' | wordcount }}",
+  "data": {}
+ },
+ {
+  "name": "indent",
+  "template": "{{ 'a\\nb\\nc' | indent(2) }}",
+  "data": {}
+ },
+ {
+  "name": "indent first",
+  "template": "{{ 'a\\nb' | indent(2, true) }}",
+  "data": {}
+ },
+ {
+  "name": "striptags",
+  "template": "{{ '<p>Hello <b>World</b></p>' | striptags }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode str",
+  "template": "{{ 'a b&c' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode dict",
+  "template": "{{ {'a b': 'c&d'} | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "items",
+  "template": "{% for k, v in d | items %}{{ k }}={{ v }};{% endfor %}",
+  "data": {
+   "d": {
+    "a": 1,
+    "b": 2
+   }
+  }
+ },
+ {
+  "name": "dictsort",
+  "template": "{% for k, v in d | dictsort %}{{ k }}{{ v }};{% endfor %}",
+  "data": {
+   "d": {
+    "b": 2,
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "dictsort value",
+  "template": "{% for k, v in d | dictsort(by='value') %}{{ k }}{{ v }};{% endfor %}",
+  "data": {
+   "d": {
+    "a": 2,
+    "b": 1
+   }
+  }
+ },
+ {
+  "name": "tojson",
+  "template": "{{ d | tojson }}",
+  "data": {
+   "d": {
+    "a": [
+     1,
+     2
+    ],
+    "b": "x\"y"
+   }
+  }
+ },
+ {
+  "name": "format",
+  "template": "{{ '%s=%d' | format('x', 5) }} {{ '%05d|%x|%r' | format(42, 255, 's') }}",
+  "data": {}
+ },
+ {
+  "name": "center",
+  "template": "{{ 'ab' | center(6) }}|",
+  "data": {}
+ },
+ {
+  "name": "wordwrap",
+  "template": "{{ 'the quick brown fox jumped' | wordwrap(10) }}",
+  "data": {}
+ },
+ {
+  "name": "filesizeformat",
+  "template": "{{ 1000 | filesizeformat }} {{ 1000 | filesizeformat(true) }} {{ 1 | filesizeformat }} {{ 1500000 | filesizeformat }}",
+  "data": {}
+ },
+ {
+  "name": "escape",
+  "template": "{{ '<b>' | escape }} {{ '&'.e }}",
+  "data": {}
+ },
+ {
+  "name": "attr",
+  "template": "{{ user | attr('name') }} {{ user | attr('missing') | default('d') }}",
+  "data": {
+   "user": {
+    "name": "x"
+   }
+  }
+ },
+ {
+  "name": "min max attr",
+  "template": "{{ users | min(attribute='age') }} {{ users | max(attribute='age') }}",
+  "data": {
+   "users": [
+    {
+     "age": 3
+    },
+    {
+     "age": 1
+    },
+    {
+     "age": 2
+    }
+   ]
+  }
+ },
+ {
+  "name": "tests basic",
+  "template": "{{ 4 is even }} {{ 3 is odd }} {{ 9 is divisibleby 3 }} {{ x is defined }} {{ m is defined }} {{ x is undefined }}",
+  "data": {
+   "x": 1
+  }
+ },
+ {
+  "name": "type tests",
+  "template": "{{ 'a' is string }} {{ 1 is number }} {{ 1.5 is number }} {{ true is boolean }} {{ d is mapping }} {{ [1] is sequence }} {{ 'a' is iterable }}",
+  "data": {
+   "d": {}
+  }
+ },
+ {
+  "name": "none tests",
+  "template": "{{ none is none }} {{ 1 is none }} {{ x is defined and not x is none }}",
+  "data": {
+   "x": 1
+  }
+ },
+ {
+  "name": "cmp tests",
+  "template": "{{ 1 is eq 1 }} {{ 1 is ne 2 }} {{ 1 is lt 2 }} {{ 2 is le 2 }} {{ 3 is gt 1 }} {{ 3 is ge 3 }}",
+  "data": {}
+ },
+ {
+  "name": "is not",
+  "template": "{{ 1 is not odd }} {{ none is not defined }}",
+  "data": {}
+ },
+ {
+  "name": "in test",
+  "template": "{{ 1 is in [1,2] }} {{ 'a' is in 'abc' }}",
+  "data": {}
+ },
+ {
+  "name": "upper lower tests",
+  "template": "{{ 'AA' is upper }} {{ 'aa' is lower }} {{ 'AA' is lower }}",
+  "data": {}
+ },
+ {
+  "name": "escaped test",
+  "template": "{{ x is escaped }}",
+  "data": {
+   "x": null
+  }
+ },
+ {
+  "name": "if elif else",
+  "template": "{% if x == 1 %}one{% elif x == 2 %}two{% else %}many{% endif %}",
+  "data": {
+   "x": 2
+  }
+ },
+ {
+  "name": "if bool",
+  "template": "{% if list %}has{% else %}empty{% endif %}",
+  "data": {
+   "list": []
+  }
+ },
+ {
+  "name": "for",
+  "template": "{% for i in [1,2,3] %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for else",
+  "template": "{% for i in [] %}{{ i }}{% else %}none{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop vars",
+  "template": "{% for i in [1,2,3] %}{{ loop.index }}{{ loop.index0 }}{{ loop.revindex }}{{ loop.revindex0 }}{{ loop.first }}{{ loop.last }}{{ loop.length }};{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop prev next",
+  "template": "{% for i in [1,2,3] %}{{ loop.previtem | default('-') }}{{ loop.nextitem | default('-') }};{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop cycle",
+  "template": "{% for i in [1,2,3,4] %}{{ loop.cycle('a','b') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop changed",
+  "template": "{% for i in [1,1,2] %}{{ loop.changed(i) }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for unpack",
+  "template": "{% for k, v in items %}{{ k }}={{ v }};{% endfor %}",
+  "data": {
+   "items": [
+    [
+     1,
+     "a"
+    ],
+    [
+     2,
+     "b"
+    ]
+   ]
+  }
+ },
+ {
+  "name": "for dict",
+  "template": "{% for k in d %}{{ k }};{% endfor %}",
+  "data": {
+   "d": {
+    "a": 1,
+    "b": 2
+   }
+  }
+ },
+ {
+  "name": "for filtered",
+  "template": "{% for i in [1,2,3,4] if i > 2 %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "nested for",
+  "template": "{% for a in [1,2] %}{% for b in ['x'] %}{{ a }}{{ b }}{% endfor %}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "set",
+  "template": "{% set x = 5 %}{{ x * 2 }}",
+  "data": {}
+ },
+ {
+  "name": "set tuple",
+  "template": "{% set a, b = 1, 2 %}{{ a }}{{ b }}",
+  "data": {}
+ },
+ {
+  "name": "set dict",
+  "template": "{% set d = {'k': 'v'} %}{{ d.k }}",
+  "data": {}
+ },
+ {
+  "name": "set block",
+  "template": "{% set x %}ab{% endset %}{{ x | upper }}",
+  "data": {}
+ },
+ {
+  "name": "namespace",
+  "template": "{% set ns = namespace(count=0) %}{% for i in [1,2,3] %}{% set ns.count = ns.count + 1 %}{% endfor %}{{ ns.count }}",
+  "data": {}
+ },
+ {
+  "name": "with",
+  "template": "{% with a = 3, b = 4 %}{{ a + b }}{% endwith %}",
+  "data": {}
+ },
+ {
+  "name": "filter block",
+  "template": "{% filter upper %}abc{% endfilter %}",
+  "data": {}
+ },
+ {
+  "name": "filter block args",
+  "template": "{% filter join(', ') %}ab{% endfilter %}",
+  "data": {}
+ },
+ {
+  "name": "do",
+  "template": "{% do 1 %}ok",
+  "data": {}
+ },
+ {
+  "name": "macro",
+  "template": "{% macro greet(name, punct='!') %}hi {{ name }}{{ punct }}{% endmacro %}{{ greet('bob') }} {{ greet('ann', punct='?') }}",
+  "data": {}
+ },
+ {
+  "name": "macro varargs",
+  "template": "{% macro m(a, b=0) %}{{ a }}|{{ b }}|{{ varargs | join(',') }}|{{ kwargs['extra'] }}{% endmacro %}{{ m(1, 2, 3, 4, extra='x') }}",
+  "data": {}
+ },
+ {
+  "name": "macro name",
+  "template": "{% macro m() %}{{ name }}{% endmacro %}{{ m() }}",
+  "data": {}
+ },
+ {
+  "name": "call",
+  "template": "{% macro wrap() %}<{{ caller() }}>{% endmacro %}{% call wrap() %}body{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "call params",
+  "template": "{% macro row() %}[{{ caller('x') }}]{% endmacro %}{% call(v) row() %}<{{ v }}>{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "recursive loop",
+  "template": "{% for n in nodes recursive %}{{ n.v }}{{ loop(n.kids) }}{% endfor %}",
+  "data": {
+   "nodes": [
+    {
+     "v": 1,
+     "kids": [
+      {
+       "v": 2,
+       "kids": []
+      },
+      {
+       "v": 3,
+       "kids": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "recursive depth",
+  "template": "{% for n in nodes recursive %}({{ n.v }}:{{ loop.depth }}{{ loop(n.kids) }}){% endfor %}",
+  "data": {
+   "nodes": [
+    {
+     "v": 1,
+     "kids": [
+      {
+       "v": 2,
+       "kids": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "range loop",
+  "template": "{% for i in range(3) %}{{ i }}{% endfor %}|{% for i in range(1, 4) %}{{ i }}{% endfor %}|{% for i in range(0, 6, 2) %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "range neg",
+  "template": "{% for i in range(3, 0, -1) %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "dict global",
+  "template": "{{ dict(a=1, b=2) | dictsort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "default whitespace",
+  "template": "a\n{% if true %}\nb\n{% endif %}\n",
+  "data": {}
+ },
+ {
+  "name": "keep trailing",
+  "template": "x\n",
+  "data": {},
+  "env": {
+   "keep_trailing_newline": true
+  }
+ },
+ {
+  "name": "trim blocks",
+  "template": "a\n{% if true %}\nb\n{% endif %}\nc",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "lstrip blocks",
+  "template": "  {% if true %}X{% endif %}\n",
+  "data": {},
+  "env": {
+   "trim_blocks": true,
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "markers var",
+  "template": "a  {{- 'X' -}}  b",
+  "data": {}
+ },
+ {
+  "name": "markers block",
+  "template": "a\n  {%- if true %}Y{% endif -%}\n  b",
+  "data": {}
+ },
+ {
+  "name": "markers one sided",
+  "template": "a {{- 'X' }} b|a {{ 'X' -}} b",
+  "data": {}
+ },
+ {
+  "name": "raw",
+  "template": "{% raw %}{{ x }}{% if y %}{% endraw %}",
+  "data": {}
+ },
+ {
+  "name": "raw markers",
+  "template": "a\n{%- raw -%}  X  {%- endraw -%}\nb",
+  "data": {}
+ },
+ {
+  "name": "raw partial",
+  "template": "{% raw %}{%{% endraw %}",
+  "data": {}
+ },
+ {
+  "name": "extends",
+  "template": "{% extends 'base.html' %}",
+  "data": {},
+  "templates": {
+   "base.html": "<title>{% block title %}Default{% endblock %}</title>{% block body %}{% endblock %}"
+  }
+ },
+ {
+  "name": "extends override",
+  "template": "{% extends 'base.html' %}{% block body %}X{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "<title>{% block title %}Default{% endblock %}</title>{% block body %}{% endblock %}"
+  }
+ },
+ {
+  "name": "extends chain",
+  "template": "{% extends 'child.html' %}",
+  "data": {},
+  "templates": {
+   "base.html": "<title>{% block title %}Default{% endblock %}</title>{% block body %}{% endblock %}",
+   "child.html": "{% extends 'base.html' %}{% block title %}{{ page }}{% endblock %}{% block body %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "include",
+  "template": "A {% include 'partial.html' %}",
+  "data": {
+   "x": 7
+  },
+  "templates": {
+   "partial.html": "P={{ x }}"
+  }
+ },
+ {
+  "name": "include missing",
+  "template": "{% include 'nope.html' ignore missing %}ok",
+  "data": {}
+ },
+ {
+  "name": "include fallback",
+  "template": "{% include ['missing.html', 'b.html'] %}",
+  "data": {},
+  "templates": {
+   "b.html": "B"
+  }
+ },
+ {
+  "name": "include without context",
+  "template": "{% include 'p.html' without context %}",
+  "data": {
+   "x": 7
+  },
+  "templates": {
+   "p.html": "{{ x | default('none') }}"
+  }
+ },
+ {
+  "name": "import",
+  "template": "{% import 'module.html' as m %}{{ m.double(21) }} {{ m.answer }}",
+  "data": {},
+  "templates": {
+   "module.html": "{% macro double(v) %}{{ v * 2 }}{% endmacro %}{% set answer = 42 %}"
+  }
+ },
+ {
+  "name": "from import",
+  "template": "{% from 'module.html' import double %}{{ double(5) }}",
+  "data": {},
+  "templates": {
+   "module.html": "{% macro double(v) %}{{ v * 2 }}{% endmacro %}"
+  }
+ },
+ {
+  "name": "autoescape basic",
+  "template": "{{ v }}",
+  "data": {
+   "v": "<b>&"
+  },
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "autoescape safe",
+  "template": "{{ v }}|{{ v | safe }}|{{ v | escape }}",
+  "data": {
+   "v": "<b>"
+  },
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "autoescape off",
+  "template": "{{ v }}",
+  "data": {
+   "v": "<b>"
+  }
+ },
+ {
+  "name": "autoescape block",
+  "template": "{% autoescape true %}{{ v }}{% endautoescape %}|{% autoescape false %}{{ v }}{% endautoescape %}",
+  "data": {
+   "v": "<b>"
+  }
+ },
+ {
+  "name": "escape no autoescape",
+  "template": "{{ v | escape }}",
+  "data": {
+   "v": "<b>"
+  }
+ }
+]

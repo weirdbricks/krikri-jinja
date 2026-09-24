@@ -2,6 +2,7 @@ module KrikriJinja
   # Truthiness: Python-style (0, "", [], {}, nil are falsy).
   def self.truthy?(value : AnyValue) : Bool
     case v = value.raw
+    when Undefined then false
     when Nil then false
     when Bool then v
     when Int64 then v != 0
@@ -15,17 +16,19 @@ module KrikriJinja
 
   # Undefined is represented as nil; strict access raises from Context.
   def self.undefined?(value : AnyValue) : Bool
-    value.raw.nil?
+    value.raw.nil? || value.raw.is_a?(Undefined)
   end
 
   def self.stringify(value : AnyValue, escape : Bool = false) : String
     s = case v = value.raw
+        when Undefined  then ""
         when Nil        then "None"
         when Bool       then v ? "True" : "False"
         when Int64      then v.to_s
         when Float64    then format_float(v)
         when String     then v
         when Array      then "[" + v.map { |x| stringify_repr(x) }.join(", ") + "]"
+        when TupleValue then "(" + v.items.map { |x| stringify_repr(x) }.join(", ") + ")"
         when Hash       then "{" + v.map { |k, x| "'#{k}': #{stringify_repr(x)}" }.join(", ") + "}"
         when Callable   then "<callable>"
         when Markup     then v.value
@@ -60,6 +63,9 @@ module KrikriJinja
   def self.values_equal(a : AnyValue, b : AnyValue) : Bool
     x = a.raw
     y = b.raw
+    if x.is_a?(Undefined) || y.is_a?(Undefined)
+      return x.is_a?(Undefined) && y.is_a?(Undefined)
+    end
     if x.is_a?(Nil) && y.is_a?(Nil)
       true
     elsif x.is_a?(Bool) && y.is_a?(Bool)

@@ -22,7 +22,7 @@ module KrikriJinja
       if @globals.has_key?(name)
         return @globals[name]
       end
-      AnyValue.new(nil)
+      AnyValue.new(Undefined.new)
     end
 
     def []?(name : String) : AnyValue?
@@ -33,7 +33,8 @@ module KrikriJinja
     end
 
     def has_key?(name : String) : Bool
-      !!self[name]?
+      v = self[name]?
+      !!(v && !v.raw.is_a?(Undefined))
     end
 
     def []=(name : String, value : AnyValue)

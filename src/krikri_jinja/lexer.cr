@@ -161,39 +161,35 @@ module KrikriJinja
               raise TemplateError.new("unclosed raw block", line)
             end
             end_content = src[end_idx + opts.block_start.size...]
-            # find the endraw block's closer (with optional - marker)
-            end_content_start = end_idx + opts.block_start.size
-            end_left_strip = end_content[0]? == '-'
-            if end_left_strip
-              end_content_start += 1
-            end
-            end_inner = src.index(opts.block_end, end_content_start)
-            raise TemplateError.new("unclosed raw block", line) unless end_inner
-            end_right_strip = end_content_start < end_inner && src[end_inner - 1]? == '-'
-            if end_right_strip
-              end_inner -= 1
-            end
-            unless src[end_content_start...end_inner].strip.gsub(/[-\s]/, "") == "endraw"
-              # not an endraw tag; keep searching for the next block start
-              search_from = end_inner + opts.block_end.size
-              found = false
-              while idx2 = src.index(opts.block_start, search_from)
-                inner2_start = idx2 + opts.block_start.size
-                inner2_start += 1 if src[inner2_start]? == '-'
-                if inner2_close = src.index(opts.block_end, inner2_start)
-                  if src[inner2_start...inner2_close].strip.gsub(/[-\s]/, "") == "endraw"
-                    end_idx = idx2
-                    end_inner = inner2_close
-                    found = true
-                    break
-                  end
-                  search_from = inner2_close + opts.block_end.size
-                else
+            # find the {% endraw %} block: scan block tags until one whose
+            # content (ignoring - markers) is exactly "endraw"
+            end_idx = nil
+            end_content_start = 0
+            end_inner = 0
+            end_left_strip = false
+            end_right_strip = false
+            search_from = close_idx + delim_end.size + (right_strip ? 1 : 0)
+            while idx2 = src.index(opts.block_start, search_from)
+              c2 = idx2 + opts.block_start.size
+              l2 = src[c2]? == '-'
+              c2 += 1 if l2
+              if i2 = src.index(opts.block_end, c2)
+                r2 = c2 < i2 && src[i2 - 1]? == '-'
+                i2_eff = r2 ? i2 - 1 : i2
+                if src[c2...i2_eff].strip.gsub(/[-\s]/, "") == "endraw"
+                  end_idx = idx2
+                  end_content_start = c2
+                  end_inner = i2_eff
+                  end_left_strip = l2
+                  end_right_strip = r2
                   break
                 end
+                search_from = idx2 + opts.block_start.size
+              else
+                break
               end
-              raise TemplateError.new("unclosed raw block", line) unless found
             end
+            raise TemplateError.new("unclosed raw block", line) unless end_idx
             open_text_start = close_idx + delim_end.size + (right_strip ? 1 : 0)
             end_text_start = end_inner + opts.block_end.size + (end_right_strip ? 1 : 0)
             raw_text = src[open_text_start...end_idx]
@@ -388,7 +384,7 @@ module KrikriJinja
       i
     end
 
-    private def read_number(src, i, toks, line) : Int32
+    private def read_number(src, i, toks, line, hex_mode = false) : Int32
       start = i
       # hex/octal/binary integers: 0x / 0o / 0b prefixes
       if src[i] == '0' && i + 1 < src.size && "xXoObB".includes?(src[i + 1])
@@ -399,8 +395,7 @@ module KrikriJinja
                   when "o" then "01234567"
                   else          "01"
                   end
-        STDERR.puts "DBG kind=#{kind} allowed=#{allowed.inspect}";
-        while i < src.size && allowed.includes?(src[i])
+                while i < src.size && allowed.includes?(src[i])
           i += 1
         end
         text = src[start...i]
@@ -412,13 +407,36 @@ module KrikriJinja
         toks << Token.new(TokenType::Int, value.to_s, line)
         return i
       end
+      hex_mode = false
       while i < src.size && src[i].number?
         i += 1
+      end
+      if i < src.size && (src[i] == 'e' || src[i] == 'E') && !hex_mode
+        j = i + 1
+        j += 1 if j < src.size && (src[j] == '+' || src[j] == '-')
+        if j < src.size && src[j].number?
+          while j < src.size && src[j].number?
+            j += 1
+          end
+          toks << Token.new(TokenType::Float, src[start...j], line)
+          return j
+        end
       end
       if i < src.size && src[i] == '.' && i + 1 < src.size && src[i + 1].number?
         i += 1
         while i < src.size && src[i].number?
           i += 1
+        end
+        # scientific notation: 1e3, 2.5E-2
+        if i < src.size && (src[i] == 'e' || src[i] == 'E')
+          j = i + 1
+          j += 1 if j < src.size && (src[j] == '+' || src[j] == '-')
+          if j < src.size && src[j].number?
+            while j < src.size && src[j].number?
+              j += 1
+            end
+            i = j
+          end
         end
         toks << Token.new(TokenType::Float, src[start...i], line)
       else

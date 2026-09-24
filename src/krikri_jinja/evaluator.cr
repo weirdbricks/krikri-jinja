@@ -25,8 +25,8 @@ module KrikriJinja
         "depth"     => AnyValue.new(@depth.to_i64),
         "depth0"    => AnyValue.new((@depth - 1).to_i64),
       } of String => AnyValue
-      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(nil)
-      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(nil)
+      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
+      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
       h
     end
   end
@@ -60,14 +60,23 @@ module KrikriJinja
         "depth"     => AnyValue.new(@depth.to_i64),
         "depth0"    => AnyValue.new((@depth - 1).to_i64),
       } of String => AnyValue
-      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(nil)
-      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(nil)
+      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
+      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
       h
     end
 
     def call(args : Array(AnyValue), _kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
       first = args[0]?
-      sub = LoopCallable.new(first ? (first.raw.is_a?(Array) ? first.raw.as(Array) : args) : args,
+      sub_items : Array(AnyValue) = if first.nil? || first.raw.is_a?(Undefined) || first.raw.is_a?(Nil)
+                                      raise TemplateError.new("loop() argument is not iterable", 0)
+                                    elsif first.raw.is_a?(Array)
+                                      first.raw.as(Array)
+                                    elsif first.raw.is_a?(String)
+                                      first.raw.as(String).chars.map { |c| AnyValue.new(c.to_s) }
+                                    else
+                                      args
+                                    end
+      sub = LoopCallable.new(sub_items,
                              @body, ctx, @engine, @targets, self, @depth + 1, @sink)
       old_loop = ctx["loop"]?
       ctx.push_scope
@@ -113,7 +122,6 @@ module KrikriJinja
         remaining_kwargs = kwargs.dup
         @params.each { |(pname, _)| remaining_kwargs.delete(pname) }
         ctx["kwargs"] = AnyValue.new(remaining_kwargs)
-        ctx["name"] = AnyValue.new(@name)
         @params.each_with_index do |(pname, default), i|
           value = if i < args.size
                     args[i]
@@ -387,6 +395,7 @@ module KrikriJinja
                                 when Array  then raw.dup
                                 when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
+                                when TupleValue then raw.items
                                 when Nil    then [] of AnyValue
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
                                 end
@@ -457,6 +466,7 @@ module KrikriJinja
         unpacked : Array(AnyValue) = case raw = value.raw
                                      when Array then raw
                                      when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
+                                     when TupleValue then raw.items
                                      else raise TemplateError.new("cannot unpack #{raw.class}", 0)
                                      end
         raise TemplateError.new("too many values to unpack", 0) if unpacked.size < targets.size
@@ -793,7 +803,7 @@ module KrikriJinja
 
     private def eval_getattr(expr : Nodes::GetattrNode) : AnyValue
       obj = eval(expr.obj)
-      get_attr(obj, expr.attr) || AnyValue.new(nil)
+      get_attr(obj, expr.attr) || AnyValue.new(Undefined.new)
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
@@ -810,12 +820,16 @@ module KrikriJinja
                  idx = key.raw.as?(Int64) || raise TemplateError.new("string indices must be integers", expr.line)
                  pos = idx < 0 ? raw.size + idx : idx
                  (0 <= pos < raw.size) ? AnyValue.new(raw[pos].to_s) : nil
+               when TupleValue
+                 idx = key.raw.as?(Int64) || raise TemplateError.new("tuple indices must be integers", expr.line)
+                 pos = idx < 0 ? raw.items.size + idx : idx
+                 (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                when Nil
-                 nil
+                 AnyValue.new(Undefined.new)
                else
-                 get_attr(obj, key.raw.as?(String) || stringify(key))
+                 get_attr(obj, key.raw.as?(String) || stringify(key)) || AnyValue.new(Undefined.new)
                end
-      result || AnyValue.new(nil)
+      result || AnyValue.new(Undefined.new)
     end
 
     private def eval_slice(expr : Nodes::SliceNode) : AnyValue
