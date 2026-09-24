@@ -151,8 +151,10 @@ describe KrikriJinja do
         .should eq("False True False")
     end
 
-    it "supports block modifiers without error" do
-      KrikriJinja.render("{% block a scoped required %}x{% endblock %}").should eq("x")
+    it "rejects required blocks with a body (jinja raises)" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% block a scoped required %}x{% endblock %}")
+      end
     end
   end
 
