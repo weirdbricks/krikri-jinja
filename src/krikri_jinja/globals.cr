@@ -30,20 +30,45 @@ module KrikriJinja
     def initialize(@items : Array(AnyValue))
     end
 
+    def next_item : AnyValue
+      item = @items[@pos]
+      @pos = (@pos + 1) % @items.size
+      item
+    end
+
+    def reset : AnyValue
+      @pos = 0
+      AnyValue.new(nil)
+    end
+
+    def current_value : AnyValue
+      @items[@pos]
+    end
+
     def call(args : Array(AnyValue), _kwargs : Hash(String, AnyValue), _ctx : Context) : AnyValue
       method = (args[0]? || AnyValue.new("")).raw.as?(String) || ""
       case method
-      when "next"
-        item = @items[@pos]
-        @pos = (@pos + 1) % @items.size
-        item
-      when "reset"
-        @pos = 0
-        AnyValue.new(nil)
-      when "current"
-        @items[@pos]
+      when "next" then next_item
+      when "reset" then reset
+      when "current" then current_value
       else
         raise TemplateError.new("unknown cycler method #{method.inspect}", 0)
+      end
+    end
+  end
+
+  # Emits its separator on the first call and empty strings afterwards.
+  class Joiner < Callable
+    def initialize(@sep : String)
+      @first = true
+    end
+
+    def call(_args : Array(AnyValue), _kwargs : Hash(String, AnyValue), _ctx : Context) : AnyValue
+      if @first
+        @first = false
+        AnyValue.new("")
+      else
+        AnyValue.new(@sep)
       end
     end
   end
@@ -59,6 +84,7 @@ module KrikriJinja
                         else
                           raise TemplateError.new("range expects 1-3 arguments", 0)
                         end
+    raise TemplateError.new("'float' object cannot be interpreted as an integer", 0) if args.any?(&.raw.is_a?(Float64))
     raise TemplateError.new("range step cannot be zero", 0) if step == 0
     result = [] of AnyValue
     if step > 0
@@ -84,9 +110,16 @@ module KrikriJinja
       when Hash then raw.each { |k, v| h[k] = v }
       when Array
         raw.each do |pair|
-          if pair.raw.is_a?(Array) && pair.raw.as(Array).size == 2
-            arr = pair.raw.as(Array)
-            h[KrikriJinja.stringify(arr[0])] = arr[1]
+          ppair = pair.raw.as?(Array) || pair.raw.as?(TupleValue).try(&.items)
+          if ppair && ppair.size == 2
+            h[KrikriJinja.stringify(ppair[0])] = ppair[1]
+          end
+        end
+      when TupleValue
+        raw.items.each do |pair|
+          ppair = pair.raw.as?(Array) || pair.raw.as?(TupleValue).try(&.items)
+          if ppair && ppair.size == 2
+            h[KrikriJinja.stringify(ppair[0])] = ppair[1]
           end
         end
       end
@@ -112,6 +145,11 @@ module KrikriJinja
 
   BUILTIN_GLOBALS["cycler"] = AnyValue.new(SimpleCallable.new("cycler") do |args, _kwargs, _ctx|
     AnyValue.new(Cycler.new(args))
+  end)
+
+  BUILTIN_GLOBALS["joiner"] = AnyValue.new(SimpleCallable.new("joiner") do |args, _kwargs, _ctx|
+    sep = args[0]?.try(&.raw.as?(String)) || ""
+    AnyValue.new(Joiner.new(sep))
   end)
 
   def self.default_globals : Hash(String, AnyValue)
