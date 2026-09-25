@@ -43,7 +43,14 @@ module KrikriJinja
     # hands out a copy tagged with the variable that was missing so error
     # messages can name it the way real Jinja2 does.
     def undefined_named(name : String) : AnyValue
-      AnyValue.new(@undefined.strict? ? @undefined.class.new(name) : Undefined.new(name))
+      undefined = @undefined
+      AnyValue.new(
+        if undefined.strict?
+          StrictUndefined.new(name, undefined.chainable)
+        else
+          Undefined.new(name, undefined.chainable)
+        end
+      )
     end
 
     def []?(name : String) : AnyValue?
