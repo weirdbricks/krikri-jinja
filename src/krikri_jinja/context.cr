@@ -33,7 +33,9 @@ module KrikriJinja
       @scopes.reverse_each.with_index do |scope, rev_i|
         i = @scopes.size - 1 - rev_i
         next if @hide_locals && i < @hide_from && @scope_is_local[i]?
-        return scope[name]? if scope.has_key?(name)
+        if value = scope[name]?
+          return value
+        end
       end
       return AnyValue.new(Undefined.new) if @hide_loop_var && name == "loop"
       @globals[name]?
@@ -83,11 +85,12 @@ module KrikriJinja
 
   class FileSystemLoader < Loader
     def initialize(@root : String)
+      @root_path = File.expand_path(@root)
     end
 
     def get_source(name : String) : String?
-      path = File.expand_path(name, @root)
-      return nil unless path.starts_with?(File.expand_path(@root))
+      path = File.expand_path(name, @root_path)
+      return nil unless path.starts_with?(@root_path)
       File.read(path) if File.file?(path)
     end
   end

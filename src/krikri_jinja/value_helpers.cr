@@ -182,8 +182,19 @@ module KrikriJinja
   end
 
   def self.escape_html(s : String) : String
-    s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
-      .gsub("\"", "&#34;").gsub("'", "&#39;")
+    return s unless s.matches?(/[&<>"']/)
+    String.build do |io|
+      s.each_char do |char|
+        case char
+        when '&'  then io << "&amp;"
+        when '<'  then io << "&lt;"
+        when '>'  then io << "&gt;"
+        when '"'  then io << "&#34;"
+        when '\'' then io << "&#39;"
+        else io << char
+        end
+      end
+    end
   end
 
   # Python-like equality/comparison across values.

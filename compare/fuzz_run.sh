@@ -7,8 +7,10 @@ cd "$(dirname "$0")/.."
 ROUNDS=${1:-5}
 N=${2:-3000}
 SEED0=${3:-1000}
+RENDERER=${KRIRKI_RENDERER:-/tmp/krikri-jinja-render}
 
 mkdir -p /tmp/krikri-fuzz
+crystal build --release compare/render.cr -o "$RENDERER"
 found=0
 echo "round seed    total  skipped  both-err     ok  divergent  rate"
 for i in $(seq 1 "$ROUNDS"); do
@@ -16,7 +18,7 @@ for i in $(seq 1 "$ROUNDS"); do
   cases=/tmp/krikri-fuzz/cases-$seed.json
   python3 compare/fuzz_gen.py "$seed" "$N" "$cases" > /dev/null
   timeout 280 python3 compare/render.py "$cases" > /tmp/krikri-fuzz/py-$seed.jsonl || { echo "seed $seed: python render timeout/failure"; found=1; continue; }
-  timeout 280 crystal run compare/render.cr -- "$cases" > /tmp/krikri-fuzz/cr-$seed.jsonl 2>/dev/null || { echo "seed $seed: crystal render timeout/failure"; found=1; continue; }
+  timeout 280 "$RENDERER" "$cases" > /tmp/krikri-fuzz/cr-$seed.jsonl 2>/dev/null || { echo "seed $seed: crystal render timeout/failure"; found=1; continue; }
   if python3 compare/fuzz_compare.py /tmp/krikri-fuzz/py-$seed.jsonl /tmp/krikri-fuzz/cr-$seed.jsonl "$seed"; then
     :
   else

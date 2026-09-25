@@ -13,6 +13,22 @@ module KrikriJinja
       @items.size.to_i64
     end
 
+    def get(name : String) : AnyValue?
+      case name
+      when "index"     then AnyValue.new((@index + 1).to_i64)
+      when "index0"    then AnyValue.new(@index.to_i64)
+      when "revindex"  then AnyValue.new((@items.size - @index).to_i64)
+      when "revindex0" then AnyValue.new((@items.size - @index - 1).to_i64)
+      when "first"     then AnyValue.new(@index == 0)
+      when "last"      then AnyValue.new(@index == @items.size - 1)
+      when "length"    then AnyValue.new(length)
+      when "depth"     then AnyValue.new(@depth.to_i64)
+      when "depth0"    then AnyValue.new((@depth - 1).to_i64)
+      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
+      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      end
+    end
+
     def to_ctx_hash : Hash(String, AnyValue)
       h = {
         "index"     => AnyValue.new((@index + 1).to_i64),
@@ -48,6 +64,22 @@ module KrikriJinja
       @items.size.to_i64
     end
 
+    def get(name : String) : AnyValue?
+      case name
+      when "index"     then AnyValue.new((@index + 1).to_i64)
+      when "index0"    then AnyValue.new(@index.to_i64)
+      when "revindex"  then AnyValue.new((@items.size - @index).to_i64)
+      when "revindex0" then AnyValue.new((@items.size - @index - 1).to_i64)
+      when "first"     then AnyValue.new(@index == 0)
+      when "last"      then AnyValue.new(@index == @items.size - 1)
+      when "length"    then AnyValue.new(length)
+      when "depth"     then AnyValue.new(@depth.to_i64)
+      when "depth0"    then AnyValue.new((@depth - 1).to_i64)
+      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
+      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      end
+    end
+
     def to_ctx_hash : Hash(String, AnyValue)
       h = {
         "index"     => AnyValue.new((@index + 1).to_i64),
@@ -79,13 +111,15 @@ module KrikriJinja
       sub = LoopCallable.new(sub_items,
                              @body, ctx, @engine, @targets, self, @depth + 1, @sink)
       old_loop = ctx["loop"]?
+      sub_value = AnyValue.new(sub)
+      sub_evaluator = Evaluator.new(ctx, @engine, @sink)
       ctx.push_scope
       begin
         sub.items.each_with_index do |item, i|
           sub.index = i
           KrikriJinja.assign_targets(ctx, @targets, item)
-          ctx["loop"] = AnyValue.new(sub)
-          Evaluator.new(ctx, @engine, @sink).render_nodes(@body)
+          ctx["loop"] = sub_value
+          sub_evaluator.render_nodes(@body)
         end
       ensure
         ctx.pop_scope
@@ -577,6 +611,7 @@ module KrikriJinja
       if node.recursive
         parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopCallable))
         loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out)
+        loop_value = AnyValue.new(loop_obj)
         old_lil = @ctx.loop_is_local
         @ctx.loop_is_local = false
         @ctx.push_scope(false)
@@ -584,7 +619,7 @@ module KrikriJinja
           items.each_with_index do |item, i|
             loop_obj.index = i
             assign_targets(node.targets, item)
-            @ctx["loop"] = AnyValue.new(loop_obj)
+            @ctx["loop"] = loop_value
             render_nodes(node.body)
           end
         ensure
@@ -601,13 +636,14 @@ module KrikriJinja
 
       parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopObject))
       loop_obj = LoopObject.new(items, 0, parent: nil, depth: 1)
+      loop_value = AnyValue.new(loop_obj)
       old_lil = @ctx.loop_is_local
       @ctx.loop_is_local = true
       @ctx.push_scope(true)
       begin
         items.each_with_index do |item, i|
           assign_targets(node.targets, item)
-          @ctx["loop"] = AnyValue.new(loop_obj)
+          @ctx["loop"] = loop_value
           @macro_frames.push({} of String => AnyValue)
           begin
             render_nodes(node.body)
@@ -1208,9 +1244,13 @@ module KrikriJinja
       key = eval(expr.key)
       result = case raw = obj.raw
                when Hash
-                 k = KrikriJinja.dict_key(key)
-                 alt = KrikriJinja.dict_key_alt(key)
-                 raw[k]? || (alt ? raw[alt]? : nil)
+                 encoded = KrikriJinja.dict_key(key)
+                 found = raw[encoded]?
+                 unless found
+                   alternate = KrikriJinja.dict_key_alt(key)
+                   found = raw[alternate]? if alternate
+                 end
+                 found
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
                  return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
