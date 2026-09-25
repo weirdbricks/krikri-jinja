@@ -279,7 +279,7 @@ module KrikriJinja
 
         # lstrip_blocks: strip spaces/tabs from the end of the text token
         # that precedes a block tag, but only up to the line start.
-        if opts.lstrip_blocks && opening == opts.block_start && !plus_left
+        if opts.lstrip_blocks && (opening == opts.block_start || opening == opts.comment_start) && !plus_left
           idx = text_count_before > 0 ? text_count_before - 1 : nil
           if idx && out_tokens[idx].type == TokenType::Text
             tok = out_tokens[idx]
