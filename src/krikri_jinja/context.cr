@@ -9,6 +9,7 @@ module KrikriJinja
     property hide_from : Int32
     property hide_loop_var : Bool
     property hide_super : Bool
+    property loop_is_local : Bool
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
@@ -20,6 +21,7 @@ module KrikriJinja
       @hide_from = 0
       @hide_loop_var = false
       @hide_super = false
+      @loop_is_local = true
     end
 
     def [](name : String) : AnyValue
