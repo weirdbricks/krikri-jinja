@@ -270,11 +270,15 @@ module KrikriJinja
     raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String)
     amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 4i64)
     first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
-    prefix = first ? " " * amount : ""
-    lines = stringify(v).split('\n')
-    lines_out = [prefix + lines[0]]
-    lines_out.concat(lines[1..].map { |l| l.empty? ? l : (" " * amount) + l })
-    AnyValue.new(lines_out.join('\n'))
+    if amount <= 0
+      AnyValue.new(stringify(v))
+    else
+      prefix = first ? " " * amount : ""
+      lines = stringify(v).split('\n')
+      lines_out = [prefix + lines[0]]
+      lines_out.concat(lines[1..].map { |l| l.empty? ? l : (" " * amount) + l })
+      AnyValue.new(lines_out.join('\n'))
+    end
   end
   register_filter("striptags") do |v, _a, _k, _c|
     s = stringify(v).gsub(/<[^>]*>/, "").gsub(/\s+/, " ").strip
@@ -728,19 +732,34 @@ module KrikriJinja
     end
   end
 
+  private def self.digit_string_v(v : AnyV) : String?
+    case v
+    when Int64   then (v >= 0 ? v.to_s : nil)
+    when String  then (v.matches?(/^\d+$/) ? v : nil)
+    else nil
+    end
+  end
+
   private def self.numeric_add(a : AnyV, b : AnyV) : AnyV
     x = a.as?(Int64) || a.as?(Float64) || (a.is_a?(Bool) ? (a ? 1i64 : 0i64) : nil)
     y = b.as?(Int64) || b.as?(Float64) || (b.is_a?(Bool) ? (b ? 1i64 : 0i64) : nil)
-    raise TemplateError.new("unsupported operand type(s) for +", 0) unless x && y
-    if x.is_a?(Int64) && y.is_a?(Int64)
-      if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
-        KrikriJinja.big_add(x.to_s, y.to_s)
-      else
-        x + y
+    if x && y
+      if x.is_a?(Int64) && y.is_a?(Int64)
+        if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
+          return KrikriJinja.big_add(x.to_s, y.to_s)
+        end
+        return x + y
       end
-    else
-      x.to_f64 + y.to_f64
+      return x.to_f64 + y.to_f64
     end
+    # big-int strings produced by overflow fall-backs
+    if (da = digit_string_v(a)) && (yint = b.as?(Int64))
+      return KrikriJinja.big_add(da, yint.to_s)
+    end
+    if (db = digit_string_v(b)) && (xint = a.as?(Int64))
+      return KrikriJinja.big_add(xint.to_s, db)
+    end
+    raise TemplateError.new("unsupported operand type(s) for +", 0)
   end
 
   # Bound string methods (Python str.*), callable from templates.
