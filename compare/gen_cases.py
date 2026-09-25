@@ -52,12 +52,22 @@ add("concat", "{{ 'a' ~ 1 ~ true ~ none }}")
 add("power float", "{{ 2 ** 0.5 }} {{ 9 ** 0.5 }}")
 
 # --- comparisons and logic ----------------------------------------------
+add("krikri conditional defined", "{{ name is defined and name == 'server' }}", {"name": "server"})
+add("krikri conditional missing", "{{ name is defined and name == 'server' }}", {})
+add("krikri attribute default", "{{ user.name | default('unknown') }}", {"user": {}})
+add("krikri selectattr", "{{ users | selectattr('enabled') | list | length }}", {"users": [{"enabled": True}, {"enabled": False}]})
+add("krikri nested list", "{{ rows | map(attribute='name') | join(',') }}", {"rows": [{"name": "a"}, {"name": "b"}]})
 add("compare", "{{ 1 < 2 }} {{ 'a' == 'a' }} {{ 2 != 2 }} {{ 3 >= 3 }} {{ 1 <= 0 }}")
 add("chained", "{{ 1 < 2 < 3 }} {{ 1 < 2 > 5 }}")
 add("in ops", "{{ 1 in [1,2] }} {{ 'x' not in 'abc' }} {{ 'k' in {'k': 1} }} {{ 'a' in 'abc' }}")
 add("and or", "{{ true and 5 }} {{ false or 'x' }} {{ not false }} {{ not 0 }}")
 add("cond expr", "{{ 'yes' if 1 > 0 else 'no' }} {{ 'y' if 0 else 'n' }} {{ 'x' if 1 }}")
 add("undefined truthiness", "{{ 'y' if missing else 'n' }}")
+add("strict undefined output", "{{ missing }}", undefined="strict")
+add("strict undefined default", "{{ missing | default('fallback') }}", undefined="strict")
+add("strict undefined tests", "{{ missing is defined }} {{ missing is undefined }}", undefined="strict")
+add("strict undefined iteration", "{% for item in missing %}{{ item }}{% endfor %}", undefined="strict")
+add("strict undefined comparison", "{{ missing == none }}", undefined="strict")
 
 # --- attribute/item/slice ------------------------------------------------
 add("getattr getitem", "{{ user.name }} {{ user['name'] }}", {"user": {"name": "bob"}})

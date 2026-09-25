@@ -2,7 +2,9 @@ module KrikriJinja
   # Truthiness: Python-style (0, "", [], {}, nil are falsy).
   def self.truthy?(value : AnyValue) : Bool
     case v = value.raw
-    when Undefined then false
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
+      false
     when Nil then false
     when Bool then v
     when Int64 then v != 0
@@ -17,15 +19,14 @@ module KrikriJinja
     end
   end
 
-  # Undefined is represented as nil; strict access raises from Context.
   def self.undefined?(value : AnyValue) : Bool
-    value.raw.nil? || value.raw.is_a?(Undefined)
+    value.raw.is_a?(Undefined)
   end
 
   def self.stringify(value : AnyValue, escape : Bool = false) : String
     s = case v = value.raw
         when Undefined
-          raise TemplateError.new("'missing' is undefined", 0) if v.strict?
+          raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
           ""
         when Nil        then "None"
         when Bool       then v ? "True" : "False"
@@ -93,7 +94,7 @@ module KrikriJinja
     case v = value.raw
     when String then py_repr_string(v)
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0) if v.strict?
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
       "Undefined"
     when Markup then "Markup(#{py_repr_string(v.value)})"
     else stringify(value)
@@ -206,6 +207,9 @@ module KrikriJinja
     x = a.raw
     y = b.raw
     if x.is_a?(Undefined) || y.is_a?(Undefined)
+      if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
+        raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined)
+      end
       return x.is_a?(Undefined) && y.is_a?(Undefined)
     end
     if x.is_a?(Nil) && y.is_a?(Nil)
@@ -275,6 +279,9 @@ module KrikriJinja
   def self.compare_values(a : AnyValue, b : AnyValue) : Int32
     x = a.raw
     y = b.raw
+    if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined)
+    end
     if x.is_a?(BigIntValue) && y.is_a?(BigIntValue)
       big_string_cmp(x.value, y.value)
     elsif x.is_a?(BigIntValue) && y.is_a?(Int64)
@@ -364,6 +371,7 @@ module KrikriJinja
     when Hash
       c.has_key?(dict_key(item))
     when Undefined
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if c.strict?
       false
     else
       raise TemplateError.new("argument of type #{c.class} is not iterable", 0)

@@ -10,7 +10,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.3.0"
+  VERSION = "0.4.0"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -189,11 +189,31 @@ module KrikriJinja
       AnyValue.new(h)
     when Nil, Bool, Int64, Float64, String then AnyValue.new(v)
     when Int32                             then AnyValue.new(v.to_i64)
-    else AnyValue.new(v.to_s)
+    else
+      raise TemplateError.new("value of type #{v.class} is not JSON-compatible", 0, kind: ErrorKind::Conversion)
     end
   end
 
   # Converts a JSON::Any value into a boxed template value.
+  def self.to_json_any(value : AnyValue) : JSON::Any
+    case raw = value.raw
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+      JSON::Any.new(nil)
+    when TupleValue then JSON::Any.new(raw.items.map { |item| to_json_any(item) })
+    when GeneratorValue then JSON::Any.new(raw.materialize.map { |item| to_json_any(item) })
+    when Array then JSON::Any.new(raw.map { |item| to_json_any(item) })
+    when Hash
+      object = {} of String => JSON::Any
+      raw.each { |key, item| object[key] = to_json_any(item) }
+      JSON::Any.new(object)
+    when BigIntValue then JSON::Any.new(raw.value)
+    when Nil, Bool, Int64, Float64, String then JSON::Any.new(raw)
+    else
+      raise TemplateError.new("value of type #{raw.class} is not JSON-compatible", 0, kind: ErrorKind::Conversion)
+    end
+  end
+
   def self.from_json_any(x : JSON::Any) : AnyValue
     raw = x.raw
     case raw
@@ -204,7 +224,8 @@ module KrikriJinja
       h = {} of String => AnyValue
       raw.each { |k, e| h[k] = from_json_any(e) }
       AnyValue.new(h)
-    else AnyValue.new(raw.to_s)
+    else
+      raise TemplateError.new("JSON value of type #{raw.class} is unsupported", 0, kind: ErrorKind::Conversion)
     end
   end
 
@@ -213,6 +234,22 @@ module KrikriJinja
     result = {} of String => AnyValue
     h.each { |k, v| result[k] = wrap_value(v) }
     result
+  end
+
+  def self.parse_expression(source : String, options : LexerOptions = LexerOptions.new) : Nodes::ExprNode
+    Parser.parse_expression(source, options)
+  end
+
+  def self.evaluate_expression(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
+                               strict : Bool = false, loader : Loader? = nil) : JSON::Any?
+    Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new).evaluate_json(source, variables)
+  end
+
+  def self.evaluate_expression_value(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
+                                     strict : Bool = false, loader : Loader? = nil) : AnyValue
+    Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new).evaluate_expression(
+      source, variables.transform_values { |item| from_json_any(item) }
+    )
   end
 
   def self.render(source : String, variables : Hash(String, V) = {} of String => String,

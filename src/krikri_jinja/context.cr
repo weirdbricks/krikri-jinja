@@ -5,6 +5,8 @@ module KrikriJinja
     property autoescape : Bool
     property undefined : Undefined
     getter loader : Loader?
+    getter filters : Hash(String, FilterFn)
+    getter tests : Hash(String, TestFn)
     property blocks : Hash(String, Array(Nodes::BlockNode))
     property hide_locals : Bool
     property hide_from : Int32
@@ -15,7 +17,9 @@ module KrikriJinja
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
                    @autoescape = false,
-                   @undefined : Undefined = Undefined.new)
+                   @undefined : Undefined = Undefined.new,
+                   @filters : Hash(String, FilterFn) = BUILTIN_FILTERS.dup,
+                   @tests : Hash(String, TestFn) = BUILTIN_TESTS.dup)
       @scopes = [{} of String => AnyValue]
       @blocks = {} of String => Array(Nodes::BlockNode)
       @scope_is_local = [false]
@@ -46,6 +50,14 @@ module KrikriJinja
     def has_key?(name : String) : Bool
       v = self[name]?
       !!(v && !v.raw.is_a?(Undefined))
+    end
+
+    def filter(name : String) : FilterFn?
+      @filters[name]?
+    end
+
+    def test(name : String) : TestFn?
+      @tests[name]?
     end
 
     def []=(name : String, value : AnyValue)

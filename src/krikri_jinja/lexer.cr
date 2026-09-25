@@ -1,3 +1,5 @@
+require "json"
+
 module KrikriJinja
   # Token types for the two-level lexer.
   #
@@ -33,11 +35,50 @@ module KrikriJinja
     end
   end
 
+  enum ErrorKind
+    Syntax
+    Runtime
+    Undefined
+    Type
+    Loader
+    Conversion
+  end
+
   class TemplateError < Exception
     property line : Int32
+    property column : Int32?
+    property kind : ErrorKind
+    property operation : String?
+    property template_name : String?
 
-    def initialize(message : String, @line : Int32)
+    def initialize(message : String, @line : Int32, @column : Int32? = nil,
+                   @kind : ErrorKind = ErrorKind::Runtime, @operation : String? = nil,
+                   @template_name : String? = nil)
+      @raw_message = message
       super("line #{@line}: #{message}")
+    end
+
+    def raw_message : String
+      @raw_message
+    end
+
+    def to_json : String
+      JSON.build do |json|
+        json.object do
+          json.field "kind", @kind.to_s.downcase
+          json.field "message", @raw_message
+          json.field "line", @line
+          if column = @column
+            json.field "column", column
+          end
+          if operation = @operation
+            json.field "operation", operation
+          end
+          if template_name = @template_name
+            json.field "template", template_name
+          end
+        end
+      end
     end
   end
 

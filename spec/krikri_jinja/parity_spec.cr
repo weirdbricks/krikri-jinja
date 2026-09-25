@@ -93,13 +93,20 @@ describe KrikriJinja do
     it "supports StrictUndefined through the engine" do
       engine = KrikriJinja::Engine.new(nil, undefined: KrikriJinja::StrictUndefined.new)
       expect_raises(KrikriJinja::TemplateError) { engine.render_string("{{ missing }}") }
-      engine.render_string("{% if missing %}yes{% else %}no{% endif %}").should eq("no")
+      expect_raises(KrikriJinja::TemplateError) { engine.render_string("{% if missing %}yes{% else %}no{% endif %}") }
       engine.render_string("{{ missing is defined }} {{ missing | default('fallback') }}").should eq("False fallback")
       expect_raises(KrikriJinja::TemplateError) { engine.render_string("{% for x in missing %}{% endfor %}") }
       expect_raises(KrikriJinja::TemplateError) { engine.render_string("{{ missing | length }}") }
     end
     it "renders empty when a conditional has no else" do
       KrikriJinja.render("{{ 'a' if missing }}|").should eq("|")
+    end
+
+    it "applies StrictUndefined to structured expressions and comparisons" do
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.evaluate_expression("missing", strict: true) }
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.evaluate_expression("missing == none", strict: true) }
+      KrikriJinja.evaluate_expression("missing | default('fallback')", strict: true).not_nil!.as_s.should eq("fallback")
+      KrikriJinja.evaluate_expression("missing is defined", strict: true).not_nil!.raw.should eq(false)
     end
 
     it "is not json serializable" do

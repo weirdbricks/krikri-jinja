@@ -14,6 +14,16 @@ module KrikriJinja
       new(Lexer.new(source, options).tokens).parse_template
     end
 
+    def self.parse_expression(source : String, options : LexerOptions = LexerOptions.new) : Nodes::ExprNode
+      parser = new(Lexer.new("{{ #{source} }}", options).tokens)
+      parser.advance
+      expr = parser.parse_expression
+      unless parser.current.type == TokenType::VarEnd
+        raise TemplateError.new("unexpected token after expression", parser.current.line)
+      end
+      expr
+    end
+
     def parse_template : Nodes::TemplateNode
       body, _tag, _line = parse_until(nil)
       Nodes::TemplateNode.new(body, 1)
@@ -1023,7 +1033,7 @@ module KrikriJinja
 
     # --- token stream helpers ---------------------------------------------------
 
-    private def current : Token
+    def current : Token
       tok = @tokens[@pos]?
       raise TemplateError.new("unexpected end of token stream", 0) unless tok
       tok
@@ -1034,7 +1044,7 @@ module KrikriJinja
       @tokens[idx]? || Token.new(TokenType::Eof, "", 0)
     end
 
-    private def advance
+    def advance
       @pos += 1 unless at_eof?
     end
 

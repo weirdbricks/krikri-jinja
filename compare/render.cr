@@ -19,6 +19,7 @@ cases.each do |case_json|
 
   opts = KrikriJinja::LexerOptions.new
   autoescape = false
+  strict_undefined = false
   if env = case_json["env"]?
     opts = KrikriJinja::LexerOptions.new(
       trim_blocks: env["trim_blocks"]?.try(&.as_bool?) || false,
@@ -26,11 +27,13 @@ cases.each do |case_json|
       keep_trailing_newline: env["keep_trailing_newline"]?.try(&.as_bool?) || false,
     )
     autoescape = env["autoescape"]?.try(&.as_bool?) || false
+    strict_undefined = env["undefined"]?.try(&.as_s?) == "strict"
   end
 
   begin
     loader = KrikriJinja::DictLoader.new(templates)
-    engine = KrikriJinja::Engine.new(loader, options: opts, autoescape: autoescape)
+    engine = KrikriJinja::Engine.new(loader, options: opts, autoescape: autoescape,
+                                    undefined: strict_undefined ? KrikriJinja::StrictUndefined.new : KrikriJinja::Undefined.new)
     vars = {} of String => KrikriJinja::AnyValue
     data_json.as_h.each do |k, v|
       vars[k] = KrikriJinja.from_json_any(v)
@@ -38,8 +41,8 @@ cases.each do |case_json|
     output = engine.render_string(template, vars)
     puts({"name": name, "output": output, "error": nil}.to_json)
   rescue e : KrikriJinja::TemplateError
-    puts({"name": name, "output": nil, "error": "TemplateError: #{e.message}"}.to_json)
+    puts({"name": name, "output": nil, "error": "TemplateError: #{e.message}", "error_kind": e.kind.to_s.downcase, "error_json": e.to_json}.to_json)
   rescue e : Exception
-    puts({"name": name, "output": nil, "error": "#{e.class}: #{e.message}"}.to_json)
+    puts({"name": name, "output": nil, "error": "#{e.class}: #{e.message}", "error_kind": "runtime"}.to_json)
   end
 end

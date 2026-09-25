@@ -1,12 +1,16 @@
 module KrikriJinja
+  alias FunctionFn = Proc(Array(AnyValue), Hash(String, AnyValue), Context, AnyValue)
+  alias JsonFunctionFn = Proc(Array(JSON::Any), Hash(String, JSON::Any), JSON::Any)
+
   class LoopObject
     getter items : Array(AnyValue)
     property index : Int32
     getter depth : Int32
     property parent : LoopObject?
     property last_changed : AnyValue?
+    property undefined : Undefined
 
-    def initialize(@items, @index, @parent = nil, @depth = 1)
+    def initialize(@items, @index, @parent = nil, @depth = 1, @undefined : Undefined = Undefined.new)
     end
 
     def length : Int64
@@ -24,8 +28,8 @@ module KrikriJinja
       when "length"    then AnyValue.new(length)
       when "depth"     then AnyValue.new(@depth.to_i64)
       when "depth0"    then AnyValue.new((@depth - 1).to_i64)
-      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
-      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(@undefined)
+      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(@undefined)
       end
     end
 
@@ -41,8 +45,8 @@ module KrikriJinja
         "depth"     => AnyValue.new(@depth.to_i64),
         "depth0"    => AnyValue.new((@depth - 1).to_i64),
       } of String => AnyValue
-      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
-      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(@undefined)
+      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(@undefined)
       h
     end
   end
@@ -55,9 +59,11 @@ module KrikriJinja
     property index : Int32 = 0
     property last_changed : AnyValue?
     property sink : ::IO
+    property undefined : Undefined
 
     def initialize(@items, @body : Array(Nodes::Node), @ctx : Context, @engine : Engine,
-                   @targets : Array(TargetSpec), @parent = nil, @depth = 1, @sink : IO = IO::Memory.new)
+                   @targets : Array(TargetSpec), @parent = nil, @depth = 1, @sink : IO = IO::Memory.new,
+                   @undefined : Undefined = Undefined.new)
     end
 
     def length : Int64
@@ -75,8 +81,8 @@ module KrikriJinja
       when "length"    then AnyValue.new(length)
       when "depth"     then AnyValue.new(@depth.to_i64)
       when "depth0"    then AnyValue.new((@depth - 1).to_i64)
-      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
-      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      when "previtem"  then @index > 0 ? @items[@index - 1] : AnyValue.new(@undefined)
+      when "nextitem"  then @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(@undefined)
       end
     end
 
@@ -92,8 +98,8 @@ module KrikriJinja
         "depth"     => AnyValue.new(@depth.to_i64),
         "depth0"    => AnyValue.new((@depth - 1).to_i64),
       } of String => AnyValue
-      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(Undefined.new)
-      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(Undefined.new)
+      h["previtem"] = @index > 0 ? @items[@index - 1] : AnyValue.new(@undefined)
+      h["nextitem"] = @index < @items.size - 1 ? @items[@index + 1] : AnyValue.new(@undefined)
       h
     end
 
@@ -109,7 +115,7 @@ module KrikriJinja
                                       args
                                     end
       sub = LoopCallable.new(sub_items,
-                             @body, ctx, @engine, @targets, self, @depth + 1, @sink)
+                             @body, ctx, @engine, @targets, self, @depth + 1, @sink, ctx.undefined)
       old_loop = ctx["loop"]?
       sub_value = AnyValue.new(sub)
       sub_evaluator = Evaluator.new(ctx, @engine, @sink)
@@ -316,13 +322,109 @@ module KrikriJinja
     getter options : LexerOptions
     getter autoescape : Bool
     getter undefined : Undefined
+    getter filters : Hash(String, FilterFn)
+    getter tests : Hash(String, TestFn)
 
     def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV,
                    @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false,
                    @undefined : Undefined = Undefined.new)
       globals = KrikriJinja.default_globals
-      user_globals.each { |k, v| globals[k] = AnyValue.wrap(v) }
+      user_globals.each { |k, v| globals[k] = KrikriJinja.wrap_value(v) }
       @globals = globals
+      @filters = BUILTIN_FILTERS.dup
+      @tests = BUILTIN_TESTS.dup
+    end
+
+    def register_filter(name : String, &block : FilterFn) : self
+      @filters[name.downcase] = block
+      self
+    end
+
+    def register_test(name : String, &block : TestFn) : self
+      @tests[name.downcase] = block
+      self
+    end
+
+    def register_global(name : String, value) : self
+      @globals[name] = KrikriJinja.wrap_value(value)
+      self
+    end
+
+    def register_function(name : String, &block : FunctionFn) : self
+      register_global(name, AnyValue.new(SimpleCallable.new(name, &block)))
+    end
+
+    def register_json_filter(name : String, &block : JsonFilterFn) : self
+      register_filter(name) do |value, args, kwargs, _ctx|
+        result = block.call(
+          KrikriJinja.to_json_any(value),
+          args.map { |arg| KrikriJinja.to_json_any(arg) },
+          kwargs.transform_values { |arg| KrikriJinja.to_json_any(arg) }
+        )
+        KrikriJinja.from_json_any(result)
+      end
+    end
+
+    def register_json_test(name : String, &block : JsonTestFn) : self
+      register_test(name) do |value, args, kwargs, _ctx|
+        block.call(
+          KrikriJinja.to_json_any(value),
+          args.map { |arg| KrikriJinja.to_json_any(arg) },
+          kwargs.transform_values { |arg| KrikriJinja.to_json_any(arg) }
+        )
+      end
+    end
+
+    def register_json_function(name : String, &block : JsonFunctionFn) : self
+      register_function(name) do |args, kwargs, _ctx|
+        result = block.call(
+          args.map { |arg| KrikriJinja.to_json_any(arg) },
+          kwargs.transform_values { |arg| KrikriJinja.to_json_any(arg) }
+        )
+        KrikriJinja.from_json_any(result)
+      end
+    end
+
+    def register_loader_function(name : String, template_name : String) : self
+      register_function(name) do |args, kwargs, _ctx|
+        variables = {} of String => AnyValue
+        kwargs.each { |key, value| variables[key] = value }
+        args.each_with_index { |value, index| variables[index.to_s] = value }
+        AnyValue.new(render_string(load_source(template_name), variables))
+      end
+    end
+
+    def known_filter?(name : String) : Bool
+      @filters.has_key?(name.downcase)
+    end
+
+    def known_test?(name : String) : Bool
+      @tests.has_key?(name.downcase)
+    end
+
+    def evaluate_expression(source : String, variables : Hash(String, AnyV) = {} of String => AnyV) : AnyValue
+      evaluate_expression_value(source, variables)
+    end
+
+    def evaluate_expression(source : String, variables : Hash(String, AnyValue)) : AnyValue
+      evaluate_expression_value(source, variables)
+    end
+
+    def evaluate_json(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any) : JSON::Any?
+      value = evaluate_expression_value(source, variables.transform_values { |item| KrikriJinja.from_json_any(item) })
+      return nil if value.raw.is_a?(Undefined) && !@undefined.strict?
+      KrikriJinja.to_json_any(value)
+    end
+
+    private def evaluate_expression_value(source : String, variables) : AnyValue
+      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      variables.each { |key, value| ctx[key] = KrikriJinja.wrap_value(value) }
+      expression = Parser.parse_expression(source, @options)
+      Evaluator.new(ctx, self).eval(expression)
+    rescue error : TemplateError
+      raise error
+    rescue error
+      raise TemplateError.new(error.message || "expression evaluation failed", 0, kind: ErrorKind::Runtime, operation: "evaluate")
     end
 
     def render_string(source : String, variables : Hash(String, AnyV) = {} of String => AnyV) : String
@@ -340,14 +442,14 @@ module KrikriJinja
 
     def load_source(name : String) : String
       source = @loader.try(&.get_source(name))
-      raise TemplateError.new("template #{name.inspect} not found", 0) unless source
+      raise TemplateError.new("template #{name.inspect} not found", 0, kind: ErrorKind::Loader, template_name: name) unless source
       source
     end
 
     private def render_variables(source : String, variables)
-      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined)
+      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
       ctx.autoescape = @autoescape
-      variables.each { |k, v| ctx[k] = AnyValue.wrap(v) }
+      variables.each { |k, v| ctx[k] = KrikriJinja.wrap_value(v) }
       node = Parser.parse(source, @options)
       Evaluator.new(ctx, self).render_template(node)
     end
@@ -589,7 +691,7 @@ module KrikriJinja
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
                                 when Undefined
-                                  raise TemplateError.new("'missing' is undefined", node.line) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
+                                  raise TemplateError.new("'missing' is undefined", node.line, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
                                   [] of AnyValue
                                 when GeneratorValue then raw.materialize
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
@@ -614,7 +716,7 @@ module KrikriJinja
 
       if node.recursive
         parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopCallable))
-        loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out)
+        loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out, @ctx.undefined)
         loop_value = AnyValue.new(loop_obj)
         old_lil = @ctx.loop_is_local
         @ctx.loop_is_local = false
@@ -639,7 +741,7 @@ module KrikriJinja
       end
 
       parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopObject))
-      loop_obj = LoopObject.new(items, 0, parent: nil, depth: 1)
+      loop_obj = LoopObject.new(items, 0, parent: nil, depth: 1, undefined: @ctx.undefined)
       loop_value = AnyValue.new(loop_obj)
       old_lil = @ctx.loop_is_local
       @ctx.loop_is_local = true
@@ -675,7 +777,7 @@ module KrikriJinja
       if body = node.body
         rendered = render_nodes_to_string(body)
         if fname = node.filter_name
-          f = BUILTIN_FILTERS[fname]? ||
+          f = @ctx.filter(fname) ||
               raise TemplateError.new("unknown filter #{fname.inspect}", node.line)
           args = node.filter_args.map { |a| eval(a) }
           kwargs = {} of String => AnyValue
@@ -762,9 +864,9 @@ module KrikriJinja
       end
       if source.nil?
         return if node.ignore_missing
-        raise TemplateError.new("template #{name.inspect} not found", node.line)
+        raise TemplateError.new("template #{name.inspect} not found", node.line, kind: ErrorKind::Loader, template_name: name)
       end
-      sub_node = Parser.parse(source)
+      sub_node = Parser.parse(source, @engine.options)
       if node.with_context
         # Rendered with the surrounding context minus loop locals; sets and
         # macro definitions stay private to the included template.
@@ -786,7 +888,7 @@ module KrikriJinja
           @ctx.pop_scope
         end
       else
-        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined)
+        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
         sub_eval = Evaluator.new(sub_ctx, @engine)
         sub_eval.render_template(sub_node)
         @out << sub_eval.output.to_s
@@ -797,8 +899,8 @@ module KrikriJinja
       name = eval(node.template).raw.as?(String) ||
              raise TemplateError.new("import expects a template name", node.line)
       source = @ctx.loader.try(&.get_source(name))
-      raise TemplateError.new("template #{name.inspect} not found", node.line) unless source
-      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined)
+      raise TemplateError.new("template #{name.inspect} not found", node.line, kind: ErrorKind::Loader, template_name: name) unless source
+      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
       if node.context
         # {% import ... with context %}: the imported module resolves names
         # against the importing template's visible (non-loop) variables.
@@ -806,7 +908,7 @@ module KrikriJinja
           scope.each { |k, v| sub_ctx.scopes[0][k] = v unless sub_ctx.scopes[0].has_key?(k) }
         end
       end
-      sub_node = Parser.parse(source)
+      sub_node = Parser.parse(source, @engine.options)
       collect_module_exports(sub_node.body, sub_ctx)
       mod = sub_ctx.scopes[0].dup
       if node.from_import
@@ -882,7 +984,7 @@ module KrikriJinja
         if truthy?(eval(expr.test))
           eval(expr.truthy)
         else
-          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(Undefined.new)
+          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(@ctx.undefined)
         end
       when Nodes::FilterNode
         eval_filter(expr)
@@ -1212,7 +1314,7 @@ module KrikriJinja
 
     private def eval_filter(expr : Nodes::FilterNode) : AnyValue
       value = eval(expr.target)
-      f = BUILTIN_FILTERS[expr.name]? ||
+      f = @ctx.filter(expr.name) ||
           raise TemplateError.new("unknown filter #{expr.name.inspect}", expr.line)
       args = expr.args.map { |a| eval(a) }
       kwargs = eval_kwargs(expr.kwargs)
@@ -1221,7 +1323,7 @@ module KrikriJinja
 
     private def eval_test(expr : Nodes::TestNode) : Bool
       value = eval(expr.target)
-      t = BUILTIN_TESTS[expr.name]? ||
+      t = @ctx.test(expr.name) ||
           raise TemplateError.new("unknown test #{expr.name.inspect}", expr.line)
       args = expr.args.flat_map do |a|
         v = eval(a)
@@ -1235,7 +1337,7 @@ module KrikriJinja
     private def eval_getattr(expr : Nodes::GetattrNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new("'missing' is undefined", expr.line)
+        raise TemplateError.new("'missing' is undefined", expr.line, kind: ErrorKind::Undefined)
       end
       get_attr(obj, expr.attr) || AnyValue.new(@ctx.undefined)
     end
@@ -1243,7 +1345,7 @@ module KrikriJinja
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new("'missing' is undefined", expr.line)
+        raise TemplateError.new("'missing' is undefined", expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
       result = case raw = obj.raw
@@ -1257,31 +1359,31 @@ module KrikriJinja
                  found
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(Undefined.new) if idx < -raw.size.to_i64
+                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
                when String
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(Undefined.new) if idx < -raw.size.to_i64
+                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? AnyValue.new(raw[pos.to_i32].to_s) : nil
                when TupleValue
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(Undefined.new) if idx < -raw.items.size.to_i64
+                 return AnyValue.new(@ctx.undefined) if idx < -raw.items.size.to_i64
                  pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
                  (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                when Nil
-                 AnyValue.new(Undefined.new)
+                 AnyValue.new(@ctx.undefined)
                else
-                 get_attr(obj, key.raw.as?(String) || stringify(key)) || AnyValue.new(Undefined.new)
+                 get_attr(obj, key.raw.as?(String) || stringify(key)) || AnyValue.new(@ctx.undefined)
                end
-      result || AnyValue.new(Undefined.new)
+      result || AnyValue.new(@ctx.undefined)
     end
 
     private def eval_slice(expr : Nodes::SliceNode) : AnyValue

@@ -6,6 +6,7 @@ module KrikriJinja
   # all values are boxed AnyValue, and returns AnyValue. Signatures follow
   # the Jinja2 Template Designer Documentation's filter list.
   alias FilterFn = Proc(AnyValue, Array(AnyValue), Hash(String, AnyValue), Context, AnyValue)
+  alias JsonFilterFn = Proc(JSON::Any, Array(JSON::Any), Hash(String, JSON::Any), JSON::Any)
 
   BUILTIN_FILTERS = {} of String => FilterFn
 
@@ -62,7 +63,7 @@ module KrikriJinja
     end
   end
   register_filter("int") do |v, args, kwargs, _c|
-    raise TemplateError.new("'missing' is undefined", 0) if v.raw.is_a?(Undefined)
+    raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
     raw = v.raw
     if raw.is_a?(BigIntValue)
       v
@@ -75,7 +76,7 @@ module KrikriJinja
     end
   end
   register_filter("float") do |v, args, kwargs, _c|
-    raise TemplateError.new("'missing' is undefined", 0) if v.raw.is_a?(Undefined)
+    raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
     default = (kwargs["default"]? || args[0]? || AnyValue.new(0.0)).raw.as?(Float64) || 0.0
     AnyValue.new(to_float(v.raw) || default)
   end
@@ -85,7 +86,7 @@ module KrikriJinja
             when GeneratorValue then raw.materialize
             when TupleValue then raw.items
             when Undefined
-              raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+              raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
               [] of AnyValue
             when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
             when BigIntValue then raise TemplateError.new("'int' object is not iterable", 0)
@@ -95,11 +96,11 @@ module KrikriJinja
             end
     AnyValue.new(items)
   end
-  register_filter("join") do |v, args, kwargs, _c|
+  register_filter("join") do |v, args, kwargs, c|
     sep = (args[0]?.try(&.raw) || kwargs["d"]?.try(&.raw)).try { |r| stringify(AnyValue.new(r)) } || ""
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     parts = to_iterable(v).map do |item|
-      item = get_attr(item, attr) || AnyValue.new(Undefined.new) if attr && !item.raw.nil?
+      item = get_attr(item, attr) || AnyValue.new(c.undefined) if attr && !item.raw.nil?
       stringify(item)
     end
     AnyValue.new(parts.join(sep))
@@ -112,19 +113,19 @@ module KrikriJinja
       args[0]? || AnyValue.new("")
     end
   end
-  register_filter("d") { |v, args, kwargs, c| BUILTIN_FILTERS["default"].call(v, args, kwargs, c) }
-  register_filter("first") do |v, _a, _k, _c|
-    to_iterable(v).first? || AnyValue.new(Undefined.new)
+  register_filter("d") { |v, args, kwargs, c| c.filter("default").not_nil!.call(v, args, kwargs, c) }
+  register_filter("first") do |v, _a, _k, c|
+    to_iterable(v).first? || AnyValue.new(c.undefined)
   end
-  register_filter("last") do |v, _a, _k, _c|
+  register_filter("last") do |v, _a, _k, c|
     raise TemplateError.new("'generator' object is not reversible", 0) if v.raw.is_a?(GeneratorValue)
-    to_iterable(v).last? || AnyValue.new(Undefined.new)
+    to_iterable(v).last? || AnyValue.new(c.undefined)
   end
   register_filter("reverse") do |v, _a, _k, _c|
     case raw = v.raw
     when String then AnyValue.new(raw.reverse)
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
       AnyValue.new(GeneratorValue.new([] of AnyValue))
     else
       AnyValue.new(GeneratorValue.new(to_iterable(v).reverse))
@@ -143,7 +144,7 @@ module KrikriJinja
     end
   end
 
-  register_filter("unique") do |v, _a, kwargs, _c|
+  register_filter("unique") do |v, _a, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     result = [] of AnyValue
@@ -155,7 +156,7 @@ module KrikriJinja
       next AnyValue.new(GeneratorValue.new([] of AnyValue, "object is not iterable"))
     end
     src.each do |item|
-      key = attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item
+      key = attr ? (get_attr(item, attr) || AnyValue.new(c.undefined)) : item
       key = AnyValue.new(stringify(key).downcase) if !case_sensitive && key.raw.is_a?(String)
       if scalar = unique_hash_key(key)
         encoded = KrikriJinja.dict_key(scalar)
@@ -173,24 +174,25 @@ module KrikriJinja
     end
     AnyValue.new(GeneratorValue.new(result))
   end
-  register_filter("min") do |v, _args, kwargs, _c|
+  register_filter("min") do |v, _args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
-    extreme(to_iterable(v), attr, case_sensitive, false) || AnyValue.new(Undefined.new)
+    extreme(to_iterable(v), attr, case_sensitive, false, c.undefined) || AnyValue.new(c.undefined)
   end
-  register_filter("max") do |v, _args, kwargs, _c|
+  register_filter("max") do |v, _args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
-    extreme(to_iterable(v), attr, case_sensitive, true) || AnyValue.new(Undefined.new)
+    extreme(to_iterable(v), attr, case_sensitive, true, c.undefined) || AnyValue.new(c.undefined)
   end
 
-  private def self.extreme(items : Array(AnyValue), attr : String?, case_sensitive : Bool, choose_max : Bool) : AnyValue?
+  private def self.extreme(items : Array(AnyValue), attr : String?, case_sensitive : Bool, choose_max : Bool,
+                           undefined : Undefined = Undefined.new) : AnyValue?
     return nil if items.empty?
     best = items[0]
-    best_key = sort_key(attr ? (get_attr(best, attr) || AnyValue.new(nil)) : best, case_sensitive)
+    best_key = sort_key(attr ? (get_attr(best, attr) || AnyValue.new(undefined)) : best, case_sensitive)
     items.each_with_index do |item, index|
       next if index == 0
-      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item, case_sensitive)
+      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(undefined)) : item, case_sensitive)
       comparison = compare_values(key, best_key)
       if (choose_max && comparison >= 0) || (!choose_max && comparison <= 0)
         best = item
@@ -218,13 +220,13 @@ module KrikriJinja
     end
     decorated.map(&.[0])
   end
-  register_filter("sort") do |v, _args, kwargs, _c|
+  register_filter("sort") do |v, _args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     reverse = (kwargs["reverse"]? || AnyValue.new(false)).raw == true
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     items = to_iterable(v)
     decorated = items.map_with_index do |item, index|
-      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item, case_sensitive)
+      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(c.undefined)) : item, case_sensitive)
       {item, key, index}
     end
     decorated.sort! do |a, b|
@@ -238,11 +240,11 @@ module KrikriJinja
 
 
 
-  register_filter("sum") do |v, args, kwargs, _c|
+  register_filter("sum") do |v, args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     items = to_iterable(v)
     if attr
-      items = items.map { |i| get_attr(i, attr) || AnyValue.new(nil) }
+      items = items.map { |i| get_attr(i, attr) || AnyValue.new(c.undefined) }
     end
     start = (kwargs["start"]? || args[0]? || AnyValue.new(0i64)).raw
     AnyValue.new(items.reduce(start) { |acc, item| numeric_add(acc, item.raw) })
@@ -452,20 +454,20 @@ module KrikriJinja
                to_iterable(v).map do |item|
                  found = get_attr(item, attr_s)
                  if found.nil? || found.raw.is_a?(Undefined)
-                   has_default ? default : AnyValue.new(Undefined.new)
+                   has_default ? default : AnyValue.new(c.undefined)
                  else
                    found
                  end
                end
              elsif tname = kwargs["test"]?.try(&.raw.as?(String))
-               t = BUILTIN_TESTS[tname]?
+               t = c.test(tname)
                raise TemplateError.new("unknown test #{tname.inspect} in map", 0) unless t
                extra = args
                to_iterable(v).select { |item| t.call(item, extra, kwargs, c) }
              else
                fname = args[0]?.try(&.raw.as?(String))
                raise TemplateError.new("map requires a filter argument", 0) unless fname
-               f = BUILTIN_FILTERS[fname]?
+               f = c.filter(fname)
                raise TemplateError.new("unknown filter #{fname.inspect} in map", 0) unless f
                inner_kwargs = kwargs.reject("attribute", "default", "test", "filter")
                if !inner_kwargs.empty? && !KWARG_FILTERS.includes?(fname)
@@ -492,16 +494,16 @@ module KrikriJinja
   register_filter("rejectattr") do |v, args, kwargs, c|
     AnyValue.new(GeneratorValue.new(attr_select(v, args, kwargs, c, keep: false)))
   end
-  register_filter("groupby") do |v, args, kwargs, _c|
+  register_filter("groupby") do |v, args, kwargs, c|
     attr = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("groupby requires an attribute", 0)
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     groups = [] of Tuple(AnyValue, String, Array(AnyValue))
     sorted_items = stable_sort(to_iterable(v)) do |a, b|
-      compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(Undefined.new),
-                     get_attr(b, attr) || kwargs["default"]? || AnyValue.new(Undefined.new))
+      compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(c.undefined),
+                     get_attr(b, attr) || kwargs["default"]? || AnyValue.new(c.undefined))
     end
     sorted_items.each do |item|
-      key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(Undefined.new)
+      key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(c.undefined)
       gkey = !case_sensitive && key.raw.is_a?(String) ? key.raw.as(String).downcase : stringify(key)
       if g = groups.find { |(_, ck, _)| ck == gkey }
         g[2] << item
@@ -576,15 +578,15 @@ module KrikriJinja
     end
     AnyValue.new(GeneratorValue.new(out_arr))
   end
-  register_filter("attr") do |v, args, _k, _c|
+  register_filter("attr") do |v, args, _k, c|
     name = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("attr requires a name", 0)
     if v.raw.is_a?(Hash) || v.raw.is_a?(Undefined)
       if raw = v.raw
-        raise TemplateError.new("'missing' is undefined", 0) if raw.is_a?(Undefined) && raw.strict?
+        raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.strict?
       end
-      AnyValue.new(Undefined.new)
+      AnyValue.new(c.undefined)
     else
-      get_attr(v, name) || AnyValue.new(Undefined.new)
+      get_attr(v, name) || AnyValue.new(c.undefined)
     end
   end
   register_filter("tojson") do |v, _a, kwargs, _c|
@@ -753,9 +755,9 @@ module KrikriJinja
     AnyValue.new(Markup.new(rendered))
   end
 
-  register_filter("random") do |v, _a, _k, _c|
+  register_filter("random") do |v, _a, _k, c|
     items = to_iterable(v)
-    items.empty? ? AnyValue.new(Undefined.new) : items[Random.new.rand(items.size)]
+    items.empty? ? AnyValue.new(c.undefined) : items[Random.new.rand(items.size)]
   end
 
   # Filters that accept keyword arguments in real Jinja2; map/filter passing
@@ -776,7 +778,7 @@ module KrikriJinja
     if fname.nil?
       return to_iterable(v).select { |item| truthy?(item) == keep }
     end
-    test = BUILTIN_TESTS[fname]
+    test = ctx.test(fname)
     raise TemplateError.new("unknown test #{fname.inspect}", 0) unless test
     rest = args.size > 1 ? args[1..] : [] of AnyValue
     to_iterable(v).select do |item|
@@ -790,17 +792,17 @@ module KrikriJinja
     fname = args[1]?.try(&.raw.as?(String)) || kwargs["test"]?.try(&.raw.as?(String))
     items = to_iterable(v)
     if fname
-      test = BUILTIN_TESTS[fname]?
+      test = ctx.test(fname)
       raise TemplateError.new("unknown test #{fname.inspect}", 0) unless test
       rest = args.size > 2 ? args[2..] : [] of AnyValue
       items.select do |item|
-        val = get_attr(item, attr) || AnyValue.new(nil)
+        val = get_attr(item, attr) || AnyValue.new(ctx.undefined)
         result = test.call(val, rest, kwargs, ctx)
         keep ? result : !result
       end
     else
       items.select do |item|
-        val = get_attr(item, attr) || AnyValue.new(nil)
+        val = get_attr(item, attr) || AnyValue.new(ctx.undefined)
         result = !undefined?(val) && truthy?(val)
         keep ? result : !result
       end
@@ -850,7 +852,7 @@ module KrikriJinja
     when TupleValue then raw.items.size.to_i64
     when Markup then raw.value.size.to_i64
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
       0i64
     else raise TemplateError.new("object of type #{raw.class} has no length", 0)
     end
@@ -866,7 +868,7 @@ module KrikriJinja
     when TupleValue then raw.items
     when Hash then raw.keys.map { |k| AnyValue.new(k) }
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
       [] of AnyValue
     else raise TemplateError.new("#{raw.class} object is not iterable", 0)
     end
