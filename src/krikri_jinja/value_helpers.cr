@@ -152,7 +152,18 @@ module KrikriJinja
     elsif x.is_a?(Float64) && y.is_a?(Float64)
       x == y
     elsif (x.is_a?(Int64) && y.is_a?(Float64)) || (x.is_a?(Float64) && y.is_a?(Int64))
-      x.to_f64 == y.to_f64
+      if x.is_a?(Int64)
+        xf, yf = x, y.as(Float64)
+      else
+        xf, yf = y.as(Int64), x.as(Float64)
+      end
+      # python int/float equality is exact; large integral floats are not
+      # exactly representable, so compare through the float's exact value
+      if yf == yf.trunc && yf.abs >= 9007199254740992.0
+        xf == yf.to_i64 rescue false
+      else
+        xf.to_f64 == yf
+      end
     elsif x.is_a?(String) && y.is_a?(String)
       x == y
     elsif x.is_a?(Array) && y.is_a?(Array)

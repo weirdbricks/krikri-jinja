@@ -267,8 +267,10 @@ module KrikriJinja
     AnyValue.new(stringify(v).split(/[ \t\r\n]+/).reject(&.empty?).size.to_i64)
   end
   register_filter("indent") do |v, args, kwargs, _c|
-    raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String)
-    amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 4i64)
+    raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String) || v.raw.is_a?(Markup)
+    amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)))
+    raise TemplateError.new("can't multiply sequence by non-int of type 'NoneType'", 0) if args[0]? && amount.nil?
+    amount ||= 4i64
     first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
     blank = (kwargs["blank"]? || args[2]? || AnyValue.new(false)).raw == true
     if amount <= 0
@@ -283,7 +285,9 @@ module KrikriJinja
   end
   register_filter("striptags") do |v, _a, _k, _c|
     s = stringify(v).gsub(/<[^>]*>/, "").gsub(/\s+/, " ").strip
-    s = s.gsub("&lt;", "<").gsub("&gt;", ">").gsub("&quot;", "\"")
+    s = s.gsub(/&#(\d+);/) { $1.to_i.chr.to_s }
+         .gsub(/&#x([0-9a-fA-F]+);/) { $1.to_i(16).chr.to_s }
+         .gsub("&lt;", "<").gsub("&gt;", ">").gsub("&quot;", "\"")
          .gsub("&#39;", "'").gsub("&nbsp;", " ").gsub("&amp;", "&")
     AnyValue.new(s)
   end
@@ -315,12 +319,13 @@ module KrikriJinja
     AnyValue.new(raw.map { |k, x| AnyValue.new(TupleValue.new([AnyValue.new(k), x])) })
   end
   register_filter("map") do |v, args, kwargs, c|
-    attr = kwargs["attribute"]?.try(&.raw.as?(String))
-    result = if attr
+    attr = kwargs["attribute"]?
+    attr_s = attr ? (attr.raw.is_a?(String) ? attr.raw.as(String) : stringify(attr)) : nil
+    result = if attr_s
                default = kwargs["default"]? || AnyValue.new(nil)
                has_default = !default.raw.is_a?(Nil) && !default.raw.is_a?(Undefined)
                to_iterable(v).map do |item|
-                 found = get_attr(item, attr)
+                 found = get_attr(item, attr_s)
                  if found.nil? || found.raw.is_a?(Undefined)
                    has_default ? default : AnyValue.new(Undefined.new)
                  else
@@ -951,7 +956,7 @@ module KrikriJinja
              end
            when "isdigit"
              ->(_args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
-               AnyValue.new(!s.empty? && s.chars.all? { |c| c.ascii_number? })
+               AnyValue.new(!s.empty? && s.chars.all?(&.number?))
              end
            when "isalpha"
              ->(_args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
