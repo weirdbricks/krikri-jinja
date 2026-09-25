@@ -1101,6 +1101,14 @@ module KrikriJinja
       else
         nil
       end
+    when Int64
+      if name == "bit_length"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("bit_length") do |_a, _k, _c|
+          AnyValue.new(raw.bit_length.to_i64)
+        end)
+      else
+        nil
+      end
     when Array, String
       case name
       when "upper"
