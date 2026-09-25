@@ -608,6 +608,18 @@ y")
       KrikriJinja.render("{{ '\u0660'.isdigit() }}").should eq("True")
     end
   end
+
+  describe "parity: round 14" do
+    it "rejects kwargs that duplicate positional macro arguments" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, a=2) }}")
+      end
+    end
+
+    it "exposes int.bit_length" do
+      KrikriJinja.render("{{ (1).bit_length() }} {{ (256).bit_length() }}").should eq("1 9")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
