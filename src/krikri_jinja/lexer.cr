@@ -132,7 +132,10 @@ module KrikriJinja
 
     # Finds the tag closer starting at `start`, skipping quoted strings and
     # balancing braces when the closer itself starts with "}".
-    def self.scan_tag_end(src : String, start : Int32, delim_end : String) : Tuple(Int32?, Bool)
+    # Returns the tag's content end, whether it closed with a `-` strip
+    # marker, and whether it closed with a `+` KEEP marker (Jinja2's
+    # whitespace-control form that suppresses trim_blocks for that tag).
+    def self.scan_tag_end(src : String, start : Int32, delim_end : String) : Tuple(Int32?, Bool, Bool)
       depth = 0
       i = start
       balance = delim_end[0] == '}'
@@ -156,18 +159,20 @@ module KrikriJinja
           else
             if src[i, delim_end.size] == delim_end
               rs = i > start && src[i - 1] == '-'
-              return {rs ? i - 1 : i, rs}
+              rp = !rs && i > start && src[i - 1] == '+'
+              return {rs ? i - 1 : i, rs, rp}
             end
             i += 1
           end
         elsif src[i, delim_end.size] == delim_end
           rs = i > start && src[i - 1] == '-'
-          return {rs ? i - 1 : i, rs}
+          rp = !rs && i > start && src[i - 1] == '+'
+          return {rs ? i - 1 : i, rs, rp}
         else
           i += 1
         end
       end
-      {nil, false}
+      {nil, false, false}
     end
 
     def tokens : Array(Token)
@@ -216,13 +221,15 @@ module KrikriJinja
 
         # find the closer, skipping string literals and (for "}}" closers)
         # balancing braces so dict literals with "}}" endings work
-        close_idx, right_strip = Lexer.scan_tag_end(src, content_start, delim_end)
+        close_idx, right_strip, plus_right = Lexer.scan_tag_end(src, content_start, delim_end)
         unless close_idx
           raise TemplateError.new("unclosed #{opening.inspect} tag", line)
         end
 
         text_count_before = out_tokens.size
         content = src[content_start...close_idx]
+        # A trailing `+` KEEP marker sits between the tag body and its closer.
+        content = content.rchop if plus_right && content.ends_with?('+')
         case opening
         when opts.var_start
           out_tokens << Token.new(TokenType::VarStart, opts.var_start, line)
@@ -308,7 +315,7 @@ module KrikriJinja
 
         # trim_blocks: a block tag eats the newline that immediately follows
         # it (var and comment tags do not; comments included per jinja).
-        if opts.trim_blocks && (opening == opts.block_start || opening == opts.comment_start)
+        if opts.trim_blocks && (opening == opts.block_start || opening == opts.comment_start) && !plus_right
           if src[after]? == '\n'
             after += 1
             line += 1
