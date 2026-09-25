@@ -10842,5 +10842,350 @@
   "name": "tojson with slash key",
   "template": "{{ {'a/b': 1} | tojson }}",
   "data": {}
+ },
+ {
+  "name": "attr filter missing",
+  "template": "{{ users | attr('zz') | default('d') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map attribute dotted error",
+  "template": "{{ users | map(attribute='n.x') | list | length }}",
+  "data": {
+   "users": [
+    {
+     "n": {
+      "x": 1
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "sum attribute missing",
+  "template": "{{ items | sum(attribute='zz') }}",
+  "data": {
+   "items": [
+    {
+     "v": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "min attr missing",
+  "template": "{{ items | min(attribute='zz') | default('d') }}",
+  "data": {
+   "items": [
+    {
+     "v": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "sort attr missing error",
+  "template": "{{ items | sort(attribute='zz') }}",
+  "data": {
+   "items": [
+    {
+     "v": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "selectattr test arg via var",
+  "template": "{{ users | selectattr('n', 'eq', want) | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a"
+    },
+    {
+     "n": "b"
+    }
+   ],
+   "want": "a"
+  }
+ },
+ {
+  "name": "unique case sensitive",
+  "template": "{{ ['a', 'A'] | unique(case_sensitive=true) | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "dictsort case sensitive kwarg",
+  "template": "{{ {'B': 1, 'a': 2} | dictsort(case_sensitive=true) | map('first') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "title keep spaces",
+  "template": "{{ ' a b ' | title }}|",
+  "data": {}
+ },
+ {
+  "name": "urlencode percent",
+  "template": "{{ '%' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "striptags nested quotes",
+  "template": "{{ '<p title=\"x\">a</p>' | striptags }}",
+  "data": {}
+ },
+ {
+  "name": "str find negative end",
+  "template": "{{ 'abcd'.find('b', 0, -1) }}",
+  "data": {}
+ },
+ {
+  "name": "str rfind negative start",
+  "template": "{{ 'abcd'.rfind('b', -3) }}",
+  "data": {}
+ },
+ {
+  "name": "str split maxsplit big",
+  "template": "{{ 'a,b'.split(',', 10) | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str count full overlap",
+  "template": "{{ 'aaaa'.count('aaa') }}",
+  "data": {}
+ },
+ {
+  "name": "str ljust exact",
+  "template": "{{ 'ab'.ljust(2, 'x') }}|",
+  "data": {}
+ },
+ {
+  "name": "str zfill neg number",
+  "template": "{{ '-12'.zfill(5) }}",
+  "data": {}
+ },
+ {
+  "name": "str expandtabs tab end",
+  "template": "{{ 'ab\\t'.expandtabs(4) }}|",
+  "data": {}
+ },
+ {
+  "name": "str swapcase symbols",
+  "template": "{{ 'a!b'.swapcase() }}",
+  "data": {}
+ },
+ {
+  "name": "str removeprefix unicode",
+  "template": "{{ 'h\u00e9llo'.removeprefix('h') }}",
+  "data": {}
+ },
+ {
+  "name": "recursive nested same attr",
+  "template": "{% for i in data recursive %}{{ i.v }}{{ loop(i.c | default([])) }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "v": 1,
+     "c": [
+      {
+       "v": 2,
+       "c": []
+      }
+     ]
+    },
+    {
+     "v": 3,
+     "c": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "loop.depth0 deep recursion",
+  "template": "{% for i in data recursive %}{{ loop.depth0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "for over generator in var",
+  "template": "{% set g = [1,2] | map('string') %}{% for x in g %}{{ x }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.cycle three items",
+  "template": "{% for i in [1,2,3,4] %}{{ loop.cycle('a', 'b', 'c') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro recursive sum",
+  "template": "{% macro r(n, acc=0) %}{{ r(n - 1, acc + n) if n > 0 else acc }}{% endmacro %}{{ r(4) }}",
+  "data": {}
+ },
+ {
+  "name": "macro with caller param default",
+  "template": "{% macro m(caller=none) %}{{ caller is none }}{% endmacro %}{{ m() }}",
+  "data": {}
+ },
+ {
+  "name": "macro call kwargs extra error",
+  "template": "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, z=9) }}",
+  "data": {}
+ },
+ {
+  "name": "include inside include",
+  "template": "{% include 'a.html' %}",
+  "data": {},
+  "templates": {
+   "a.html": "A{% include 'b.html' %}",
+   "b.html": "B"
+  }
+ },
+ {
+  "name": "extends with include in parent",
+  "template": "{% extends 'base.html' %}{% block b %}C{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% include 'p.html' %}{% block b %}B{% endblock %}",
+   "p.html": "P"
+  }
+ },
+ {
+  "name": "import same module twice",
+  "template": "{% import 'm.html' as m %}{% import 'm.html' as n %}{{ m.v }}{{ n.v }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% set v = 'V' %}"
+  }
+ },
+ {
+  "name": "lstrip tab indent",
+  "template": "x\n\t{% if true %}y{% endif %}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "marker var end right",
+  "template": "{{ 'x' -}}\n y",
+  "data": {}
+ },
+ {
+  "name": "trim nested blocks mixed",
+  "template": "{% if true %}\n{% set x = 1 %}\n{{ x }}\n{% endif %}",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "float int compare huge",
+  "template": "{{ 1e15 == 1000000000000000 }}",
+  "data": {}
+ },
+ {
+  "name": "neg pow odd",
+  "template": "{{ (-3) ** 3 }}",
+  "data": {}
+ },
+ {
+  "name": "floor div toward neg inf",
+  "template": "{{ -1 // 2 }} {{ -0.5 // 1 }}",
+  "data": {}
+ },
+ {
+  "name": "mod same sign",
+  "template": "{{ 7 % 3 }} {{ -7 % -3 }}",
+  "data": {}
+ },
+ {
+  "name": "pow zero neg",
+  "template": "{{ 0 ** -1 }}",
+  "data": {}
+ },
+ {
+  "name": "big add then compare",
+  "template": "{{ 9223372036854775807 + 1 > 9223372036854775807 }}",
+  "data": {}
+ },
+ {
+  "name": "autoescape nested set filter",
+  "template": "{% set x %}<b>{% endset %}{{ x | upper | trim }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "namespace across include",
+  "template": "{% set ns = namespace(v=1) %}{% include 'p.html' %}{{ ns.v }}",
+  "data": {},
+  "templates": {
+   "p.html": "{% set ns.v = 2 %}"
+  }
+ },
+ {
+  "name": "dict value markup autoescape",
+  "template": "{{ {'k': '<v>'} }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "filter chain with test",
+  "template": "{{ [1,2,3] | select('odd') | list | first is eq 1 }}",
+  "data": {}
+ },
+ {
+  "name": "concat with markup tuple",
+  "template": "{{ ('<x>' | safe) ~ (1,) }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "escape in urlize text",
+  "template": "{{ 'see <b> http://x.com' | urlize }}",
+  "data": {}
+ },
+ {
+  "name": "deeply nested tuple in dict in list",
+  "template": "{{ [{'k': (1, (2,))}] }}",
+  "data": {}
+ },
+ {
+  "name": "long chain getitem attr",
+  "template": "{{ d.a['b'].c }}",
+  "data": {
+   "d": {
+    "a": {
+     "b": {
+      "c": "v"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "loop var after recursive",
+  "template": "{% for i in [1] recursive %}{% endfor %}{{ loop | default('d') }}",
+  "data": {}
  }
 ]
