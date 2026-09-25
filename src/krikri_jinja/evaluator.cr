@@ -222,7 +222,7 @@ module KrikriJinja
           work["caller"] = caller_val
         end
         rendered = Evaluator.new(work).render_nodes_to_string(@body)
-        AnyValue.new(Markup.new(rendered))
+        work.autoescape ? AnyValue.new(Markup.new(rendered)) : AnyValue.new(rendered)
       ensure
         work.pop_scope
       end
@@ -244,7 +244,8 @@ module KrikriJinja
         @params.each_with_index do |pname, i|
           ctx[pname] = args[i]? || AnyValue.new(nil)
         end
-        AnyValue.new(Markup.new(Evaluator.new(ctx).render_nodes_to_string(@body)))
+        r = Evaluator.new(ctx).render_nodes_to_string(@body)
+        ctx.autoescape ? AnyValue.new(Markup.new(r)) : AnyValue.new(r)
       ensure
         ctx.pop_scope
       end
@@ -571,7 +572,9 @@ module KrikriJinja
       if node.recursive
         parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopCallable))
         loop_obj = LoopCallable.new(items, node.body, @ctx, @engine, node.targets, parent_loop, (parent_loop.try(&.depth) || 0) + 1, @out)
-        @ctx.push_scope(true)
+        old_lil = @ctx.loop_is_local
+        @ctx.loop_is_local = false
+        @ctx.push_scope(false)
         begin
           items.each_with_index do |item, i|
             loop_obj.index = i
@@ -581,6 +584,7 @@ module KrikriJinja
           end
         ensure
           @ctx.pop_scope
+          @ctx.loop_is_local = old_lil
           if parent_loop.nil?
             @ctx.delete("loop")
           else
@@ -592,6 +596,8 @@ module KrikriJinja
 
       parent_loop = @ctx["loop"]?.try(&.raw.as?(LoopObject))
       loop_obj = LoopObject.new(items, 0, parent: nil, depth: 1)
+      old_lil = @ctx.loop_is_local
+      @ctx.loop_is_local = true
       @ctx.push_scope(true)
       begin
         items.each_with_index do |item, i|
@@ -607,6 +613,7 @@ module KrikriJinja
         end
       ensure
         @ctx.pop_scope
+        @ctx.loop_is_local = old_lil
         if parent_loop.nil?
           @ctx.delete("loop")
         else
@@ -720,7 +727,7 @@ module KrikriJinja
         old_noloop = @ctx.hide_loop_var
         old_nosuper = @ctx.hide_super
         old_blocks = @ctx.blocks
-        @ctx.hide_loop_var = true
+        @ctx.hide_loop_var = @ctx.loop_is_local
         @ctx.hide_super = true
         @ctx.blocks = {} of String => Array(Nodes::BlockNode)
         begin

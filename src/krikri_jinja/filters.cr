@@ -33,7 +33,8 @@ module KrikriJinja
   end
   register_filter("trim") do |v, args, kwargs, _c|
     chars = args[0]?.try(&.raw.as?(String)) || kwargs["chars"]?.try(&.raw.as?(String)) || " \t\r\n"
-    AnyValue.new(stringify(v).strip(chars))
+    r = stringify(v).strip(chars)
+    v.raw.is_a?(Markup) ? AnyValue.new(Markup.new(r)) : AnyValue.new(r)
   end
   register_filter("length") { |v, _a, _k, _c| AnyValue.new(length_of(v)) }
   register_filter("count") { |v, _a, _k, _c| AnyValue.new(length_of(v)) }
@@ -102,6 +103,7 @@ module KrikriJinja
     to_iterable(v).first? || AnyValue.new(Undefined.new)
   end
   register_filter("last") do |v, _a, _k, _c|
+    raise TemplateError.new("'generator' object is not reversible", 0) if v.raw.is_a?(GeneratorValue)
     to_iterable(v).last? || AnyValue.new(Undefined.new)
   end
   register_filter("reverse") do |v, _a, _k, _c|
