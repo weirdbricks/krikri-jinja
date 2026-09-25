@@ -2136,6 +2136,78 @@ add("concat in test arg", "{{ 'a' is eq ('a' ~ '') }}")
 add("filter in test arg", "{{ 4 is divisibleby (2 | first if false else 2) }}")
 add("call expression on filter result", "{{ [1,2] | first.to_s }}")
 
+
+# ================= edge-case expansion (round 16) =================
+
+# --- generator chains: exhaustiveness -------------------------------------------
+add("generator nested twice", "{{ [1,2] | map('string') | map('upper') | join(',') }}")
+add("selectattr rejectattr chain", "{{ users | selectattr('v') | rejectattr('v', 'eq', 2) | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "a", "v": 1}, {"n": "b", "v": 2}]})
+add("groupby then batch", "{% for g in items | groupby('k') %}[{{ g.list | batch(2) | map('join', '-') | join(',') }}]{% endfor %}",
+    {"items": [{"k": 1, "v": 1}, {"k": 1, "v": 2}, {"k": 1, "v": 3}]})
+add("sort attr on generator", "{{ users | map(attribute='n') | list | sort | join(',') }}", {"users": [{"n": "b"}, {"n": "a"}]})
+add("unique generator then first", "{{ ['a','a','b'] | unique | first }}")
+add("reverse then sort", "{{ [2,1] | reverse | sort | join(',') }}")
+
+# --- error shape consistency ------------------------------------------------------
+add("add undefined error msg", "{{ 1 + missing }}")
+add("mul undefined error", "{{ 2 * missing }}")
+add("div undefined error", "{{ 1 / missing }}")
+add("floor undefined error", "{{ 1 // missing }}")
+add("mod undefined error", "{{ 1 % missing }}")
+add("pow undefined error", "{{ 2 ** missing }}")
+add("compare undefined error", "{{ 1 < missing }}")
+
+# --- loop: deep nesting -----------------------------------------------------------
+add("for in if in for", "{% for a in [1] %}{% if true %}{% for b in [2] %}{{ a }}{{ b }}{% endfor %}{% endif %}{% endfor %}")
+add("loop vars three deep", "{% for a in [1] %}{% for b in [2] %}{% for c in [3] %}{{ loop.depth }}{% endfor %}{% endfor %}{% endfor %}")
+add("recursive deep branches", "{% for i in data recursive %}{{ i.v }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"v": "a", "c": [{"v": "b", "c": [{"v": "c", "c": []}, {"v": "d", "c": []}]}]}]})
+add("loop cycle inside recursive", "{% for i in data recursive %}{{ loop.cycle('x', 'y') }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("for over range nested expr", "{% for i in range(2) %}{% for j in range(i + 1) %}{{ j }}{% endfor %}{% endfor %}")
+
+# --- macros: round 5 -----------------------------------------------------------------
+add("macro kwargs iterate sorted", "{% macro m() %}{% for k, v in kwargs | dictsort %}{{ k }}{{ v }}{% endfor %}{% endmacro %}{{ m(b=2, a=1) }}")
+add("macro default references earlier param", "{% macro m(x, y=x ~ '!') %}{{ y }}{% endmacro %}{{ m('a') }}")
+add("macro in macro body scope", "{% macro outer() %}{% macro inner() %}I{% endmacro %}{{ inner() }}O{% endmacro %}{{ outer() }}{{ inner is defined }}")
+
+# --- inheritance: round 11 --------------------------------------------------------------
+add("block with same name across include", "{% include 'p.html' %}{% block b %}C{% endblock %}", templates={
+    "p.html": "{% block b %}P{% endblock %}"})
+add("super after include in block", "{% extends 'base.html' %}{% block b %}{% include 'p.html' %}{{ super() }}{% endblock %}", templates={
+    "base.html": "{% block b %}B{% endblock %}",
+    "p.html": "P"})
+add("import inside for", "{% for i in [1] %}{% import 'm.html' as m %}{{ m.v }}{% endfor %}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("from import inside block", "{% extends 'base.html' %}{% block b %}{% from 'm.html' import v %}{{ v }}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "m.html": "{% set v = 'FV' %}"})
+
+# --- whitespace: round 12 -------------------------------------------------------------------
+add("trim blocks only newlines", "{% set x = 1 %}\n{{ x }}", trim_blocks=True)
+add("lstrip deep chain", "{% if true %}\n  {% for i in [1] %}\n    x\n  {% endfor %}\n{% endif %}", lstrip_blocks=True)
+add("markers around else", "{% if false %}a\n{%- else -%}\nb\n{%- endif %}")
+
+# --- numbers: round 12 -------------------------------------------------------------------------
+add("float big pow", "{{ 10.0 ** 20 }}")
+add("neg mod neg int", "{{ -7 % -3 }}")
+add("floor div exact", "{{ 10 // 5 }} {{ -10 // 5 }}")
+add("compare inf nan", "{{ 1e308 * 10 > 0 }}")
+add("bool chain arith", "{{ true + true + true }}")
+add("mixed div chain", "{{ 10 / 4 * 2 }}")
+
+# --- misc: round 11 -------------------------------------------------------------------------------
+add("markup through join autoescape", "{{ ['<a>', 'b'] | join('|') }}", autoescape=True)
+add("filter on tuple method", "{{ (1, 2) | last }}")
+add("dict get numeric", "{{ {1: 'a'}.get(1) }} {{ {1: 'a'}.get(2, 'd') }}")
+add("chained getitem attr mix", "{{ d['a'].b[0] }}", {"d": {"a": {"b": [7]}}})
+add("set attr on namespace in loop", "{% set ns = namespace(n=0) %}{% for i in [1,2] %}{% set ns.n = ns.n + i %}{% endfor %}{{ ns.n }}")
+add("test arg via variable", "{{ 4 is divisibleby d }}", {"d": 2})
+add("filter arg via variable", "{{ 'a.b' | replace(sep, '-') }}", {"sep": "."})
+add("nested set block render", "{% set x %}a{% set y %}b{% endset %}{% endset %}{{ x }}")
+add("comment between var tags", "{{ 1 }}{# c #}{{ 2 }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
