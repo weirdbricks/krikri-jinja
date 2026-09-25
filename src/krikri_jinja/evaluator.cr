@@ -323,6 +323,13 @@ module KrikriJinja
     getter autoescape : Bool
     getter undefined : Undefined
     property host_context : HostContext?
+    # Jinja's `finalize`: applied to every `{{ }}` result before it is
+    # written out (never to values flowing between expressions).
+    property finalize : Proc(AnyValue, AnyValue)?
+    # When set, `{% for k, v in some_dict %}` iterates the dict's (key,
+    # value) pairs instead of failing to unpack its keys, a lenient form
+    # some Ansible roles depend on.
+    property dict_pair_unpacking : Bool = false
     getter filters : Hash(String, FilterFn)
     getter tests : Hash(String, TestFn)
 
@@ -338,6 +345,8 @@ module KrikriJinja
 
     def with_undefined(undefined : Undefined) : Engine
       copy = Engine.new(@loader, {} of String => AnyV, @options, @autoescape, undefined, @host_context)
+      copy.finalize = @finalize
+      copy.dict_pair_unpacking = @dict_pair_unpacking
       @globals.each { |key, value| copy.globals[key] = value }
       @filters.each { |key, value| copy.filters[key] = value }
       @tests.each { |key, value| copy.tests[key] = value }
@@ -723,6 +732,9 @@ module KrikriJinja
 
     private def render_output(node : Nodes::OutputNode)
       value = eval(node.expr)
+      if finalize = @engine.finalize
+        value = finalize.call(value)
+      end
       s = if value.raw.is_a?(Markup)
             value.raw.as(Markup).value
           else
@@ -732,12 +744,21 @@ module KrikriJinja
       @out << s
     end
 
+    private def pair_targets?(targets : Array(TargetSpec)) : Bool
+      targets.size == 2 || (targets.size == 1 && targets[0].children.try(&.size) == 2)
+    end
+
     private def render_for(node : Nodes::ForNode)
       iterable = eval(node.iter)
       items : Array(AnyValue) = case raw = iterable.raw
                                 when Array  then raw.dup
                                 when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
-                                when Hash   then raw.keys.map { |k| AnyValue.new(k) }
+                                when Hash
+                                  if @engine.dict_pair_unpacking && pair_targets?(node.targets)
+                                    raw.map { |k, v| AnyValue.new(TupleValue.new([KrikriJinja.decode_key(k), v])) }
+                                  else
+                                    raw.keys.map { |k| AnyValue.new(k) }
+                                  end
                                 when TupleValue then raw.items
                                 when Undefined
                                   raise TemplateError.new(KrikriJinja.undefined_message(raw.as(Undefined)), node.line, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
