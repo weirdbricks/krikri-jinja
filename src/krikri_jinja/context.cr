@@ -36,7 +36,14 @@ module KrikriJinja
     end
 
     def [](name : String) : AnyValue
-      (v = self[name]?) ? v : AnyValue.new(@undefined)
+      (v = self[name]?) ? v : undefined_named(name)
+    end
+
+    # The engine's shared Undefined instance carries no name; a lookup miss
+    # hands out a copy tagged with the variable that was missing so error
+    # messages can name it the way real Jinja2 does.
+    def undefined_named(name : String) : AnyValue
+      AnyValue.new(@undefined.strict? ? @undefined.class.new(name) : Undefined.new(name))
     end
 
     def []?(name : String) : AnyValue?
@@ -48,7 +55,7 @@ module KrikriJinja
           return value
         end
       end
-      return AnyValue.new(@undefined) if @hide_loop_var && name == "loop"
+      return undefined_named(name) if @hide_loop_var && name == "loop"
       @globals[name]?
     end
 

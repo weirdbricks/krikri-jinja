@@ -63,7 +63,7 @@ module KrikriJinja
     end
   end
   register_filter("int") do |v, args, kwargs, _c|
-    raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
+    raise TemplateError.new(KrikriJinja.undefined_message(v.raw.as(Undefined)), 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
     raw = v.raw
     if raw.is_a?(BigIntValue)
       v
@@ -76,7 +76,7 @@ module KrikriJinja
     end
   end
   register_filter("float") do |v, args, kwargs, _c|
-    raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
+    raise TemplateError.new(KrikriJinja.undefined_message(v.raw.as(Undefined)), 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
     default = (kwargs["default"]? || args[0]? || AnyValue.new(0.0)).raw.as?(Float64) || 0.0
     AnyValue.new(to_float(v.raw) || default)
   end
@@ -86,7 +86,7 @@ module KrikriJinja
             when GeneratorValue then raw.materialize
             when TupleValue then raw.items
             when Undefined
-              raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+              raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
               [] of AnyValue
             when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
             when BigIntValue then raise TemplateError.new("'int' object is not iterable", 0)
@@ -125,7 +125,7 @@ module KrikriJinja
     case raw = v.raw
     when String then AnyValue.new(raw.reverse)
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       AnyValue.new(GeneratorValue.new([] of AnyValue))
     else
       AnyValue.new(GeneratorValue.new(to_iterable(v).reverse))
@@ -582,7 +582,7 @@ module KrikriJinja
     name = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("attr requires a name", 0)
     if v.raw.is_a?(Hash) || v.raw.is_a?(Undefined)
       if raw = v.raw
-        raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.strict?
+        raise TemplateError.new(KrikriJinja.undefined_message(raw.as(Undefined)), 0, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
       end
       AnyValue.new(c.undefined)
     else
@@ -937,7 +937,7 @@ module KrikriJinja
     when TupleValue then raw.items.size.to_i64
     when Markup then raw.value.size.to_i64
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       0i64
     else raise TemplateError.new("object of type #{raw.class} has no length", 0)
     end
@@ -953,7 +953,7 @@ module KrikriJinja
     when TupleValue then raw.items
     when Hash then raw.keys.map { |k| AnyValue.new(k) }
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       [] of AnyValue
     else raise TemplateError.new("#{raw.class} object is not iterable", 0)
     end

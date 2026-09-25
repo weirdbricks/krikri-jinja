@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.4"
+  VERSION = "0.4.5"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -200,7 +200,7 @@ module KrikriJinja
   def self.to_json_any(value : AnyValue) : JSON::Any
     case raw = value.raw
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if raw.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       JSON::Any.new(nil)
     when TupleValue then JSON::Any.new(raw.items.map { |item| to_json_any(item) })
     when GeneratorValue then JSON::Any.new(raw.materialize.map { |item| to_json_any(item) })
