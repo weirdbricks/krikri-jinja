@@ -247,6 +247,10 @@ module KrikriJinja
                 after += ws_match[0].size
               end
             end
+            if opts.trim_blocks && src[after]? == '\n' && !end_right_strip
+              after += 1
+              line += 1
+            end
             line += src[next_delim...after].count('\n')
             pos = after
             next
