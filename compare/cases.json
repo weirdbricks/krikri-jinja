@@ -7904,5 +7904,482 @@
   "name": "nested dict literal key expr",
   "template": "{{ {('a' | upper): 1} }}",
   "data": {}
+ },
+ {
+  "name": "truncate all defaults",
+  "template": "{{ 'abcdefghij' | truncate }}",
+  "data": {}
+ },
+ {
+  "name": "truncate killwords only",
+  "template": "{{ 'abcdefgh' | truncate(5, true) }}",
+  "data": {}
+ },
+ {
+  "name": "wordwrap break true pos",
+  "template": "{{ 'aaaa bb' | wordwrap(3, true) }}",
+  "data": {}
+ },
+ {
+  "name": "indent first kwarg",
+  "template": "{{ 'a\\nb' | indent(first=true) }}|",
+  "data": {}
+ },
+ {
+  "name": "indent blank kwarg",
+  "template": "{{ 'a\\n\\nb' | indent(2, blank=true) }}|",
+  "data": {}
+ },
+ {
+  "name": "trim chars kwarg",
+  "template": "{{ 'xxaxx' | trim(chars='x') }}",
+  "data": {}
+ },
+ {
+  "name": "replace kwargs",
+  "template": "{{ 'aaa' | replace(old='a', new='b') }}",
+  "data": {}
+ },
+ {
+  "name": "int base kwarg",
+  "template": "{{ '10' | int(base=2) }}",
+  "data": {}
+ },
+ {
+  "name": "round method kwarg",
+  "template": "{{ 2.5 | round(method='ceil') }} {{ 2.5 | round(method='floor') }}",
+  "data": {}
+ },
+ {
+  "name": "filesizeformat binary kwarg",
+  "template": "{{ 1024 | filesizeformat(binary=true) }}",
+  "data": {}
+ },
+ {
+  "name": "dictsort by kwarg",
+  "template": "{{ {'a': 2, 'b': 1} | dictsort(by='value') | map('first') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "unique attr kwarg",
+  "template": "{{ users | unique(attribute='g') | length }}",
+  "data": {
+   "users": [
+    {
+     "g": 1
+    },
+    {
+     "g": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "sum start kwarg",
+  "template": "{{ [1] | sum(start='x') }}",
+  "data": {}
+ },
+ {
+  "name": "join d kwarg",
+  "template": "{{ [1,2] | join(d='-') }}",
+  "data": {}
+ },
+ {
+  "name": "default boolean kwarg",
+  "template": "{{ false | default('d', boolean=true) }}",
+  "data": {}
+ },
+ {
+  "name": "tojson indent kwarg",
+  "template": "{{ [1] | tojson(indent=1) }}",
+  "data": {}
+ },
+ {
+  "name": "sort attribute kwarg",
+  "template": "{{ users | sort(attribute='n') | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "b"
+    },
+    {
+     "n": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "min case_sensitive kwarg",
+  "template": "{{ ['B', 'a'] | min }} {{ ['B', 'a'] | max }}",
+  "data": {}
+ },
+ {
+  "name": "str count end clip",
+  "template": "{{ 'ababab'.count('ab', 2, 5) }}",
+  "data": {}
+ },
+ {
+  "name": "str rfind end clip",
+  "template": "{{ 'ababab'.rfind('ba', 0, 4) }}",
+  "data": {}
+ },
+ {
+  "name": "str find whole range",
+  "template": "{{ 'abc'.find('c', 0, 3) }}",
+  "data": {}
+ },
+ {
+  "name": "str rjust exact",
+  "template": "{{ 'abc'.rjust(3, '0') }}|",
+  "data": {}
+ },
+ {
+  "name": "str ljust fill multi",
+  "template": "{{ 'a'.ljust(4, 'xy') }}",
+  "data": {}
+ },
+ {
+  "name": "str center fill multi",
+  "template": "{{ 'a'.center(4, 'xy') }}",
+  "data": {}
+ },
+ {
+  "name": "str zfill large",
+  "template": "{{ '1'.zfill(10) }}",
+  "data": {}
+ },
+ {
+  "name": "str split max neg",
+  "template": "{{ 'a,b,c'.split(',', -1) | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str rsplit max neg",
+  "template": "{{ 'a,b,c'.rsplit(',', -1) | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "str strip mixed args",
+  "template": "{{ 'aaXbb'.strip('ab') }}",
+  "data": {}
+ },
+ {
+  "name": "str removesuffix all",
+  "template": "{{ 'xx'.removesuffix('xx') }}|",
+  "data": {}
+ },
+ {
+  "name": "str replace same str",
+  "template": "{{ 'aa'.replace('aa', 'b') }}",
+  "data": {}
+ },
+ {
+  "name": "and returns right value",
+  "template": "{{ 5 and 'x' }} {{ none and 'x' }}",
+  "data": {}
+ },
+ {
+  "name": "or returns first truthy",
+  "template": "{{ 'a' or 'b' }} {{ '' or 'b' }} {{ 0 or 1 }}",
+  "data": {}
+ },
+ {
+  "name": "not chain values",
+  "template": "{{ not 0 }} {{ not [] }} {{ not 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "compare tuple list error",
+  "template": "{{ (1,) < [1] }}",
+  "data": {}
+ },
+ {
+  "name": "eq dict order irrelevant",
+  "template": "{{ {'a': 1, 'b': 2} == {'b': 2, 'a': 1} }}",
+  "data": {}
+ },
+ {
+  "name": "eq nested containers",
+  "template": "{{ {'a': [1, {'b': 2}]} == {'a': [1, {'b': 2}]} }}",
+  "data": {}
+ },
+ {
+  "name": "eq markup string",
+  "template": "{{ ('x' | safe) == 'x' }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "loop over dict items order",
+  "template": "{% for k in {'b': 1, 'a': 2} %}{{ k }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for with recursive flag no use",
+  "template": "{% for i in [1,2] recursive %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.length constant",
+  "template": "{% for i in [1,2,3] %}{{ loop.length }}-{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "nested recursive depth",
+  "template": "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": [
+        {
+         "c": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "loop cycle two same",
+  "template": "{% for i in [1,2,3] %}{{ loop.cycle('x', 'x') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for unpack deeper error",
+  "template": "{% for (a, b), c in [[(1, 2), 3, 4]] %}{{ a }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop previtem in filtered",
+  "template": "{% for x in [1,2,3] if x != 2 %}{{ loop.previtem | default('-') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop last with filter",
+  "template": "{% for x in [1,2,3] if x != 1 %}{{ loop.last }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "extends var in grandparent",
+  "template": "{% extends 'mid.html' %}{% block b %}{{ v | default('d') }}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% set v = 'BV' %}{% block b %}{% endblock %}",
+   "mid.html": "{% extends 'base.html' %}"
+  }
+ },
+ {
+  "name": "include inside macro",
+  "template": "{% macro m() %}{% include 'p.html' %}{% endmacro %}{{ m() }}",
+  "data": {},
+  "templates": {
+   "p.html": "P"
+  }
+ },
+ {
+  "name": "import with context macro",
+  "template": "{% set g = 'G' %}{% import 'm.html' as m with context %}{{ m.h() }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% macro h() %}{{ g | default('none') }}{% endmacro %}"
+  }
+ },
+ {
+  "name": "block in loop child override",
+  "template": "{% extends 'base.html' %}{% block b %}C{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% for i in [1,2] %}{% block b %}D{% endblock %}{% endfor %}"
+  }
+ },
+ {
+  "name": "from import same name twice",
+  "template": "{% from 'm.html' import v, v %}{{ v }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% set v = 'V' %}"
+  }
+ },
+ {
+  "name": "three includes",
+  "template": "{% include 'a.html' %}{% include 'b.html' %}{% include 'c.html' %}",
+  "data": {},
+  "templates": {
+   "a.html": "A",
+   "b.html": "B",
+   "c.html": "C"
+  }
+ },
+ {
+  "name": "marker on import",
+  "template": "x\n  {%- import 'm.html' as m %}{{ m.v }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% set v = 'V' %}"
+  }
+ },
+ {
+  "name": "lstrip only whitespace line",
+  "template": "x\n   \n{% if true %}y{% endif %}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "trim with comment only line",
+  "template": "a\n{# x #}\n{# y #}\nb",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "marker on for else",
+  "template": "{% for x in [] %}x{% else -%}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "var markers no spaces",
+  "template": "{{- 'a' -}}",
+  "data": {}
+ },
+ {
+  "name": "pow negative base frac exp",
+  "template": "{{ (-8) ** (1/3) != 0 }}",
+  "data": {}
+ },
+ {
+  "name": "float int floor div",
+  "template": "{{ 7.5 // 2 }} {{ -7.5 // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "mod float negative div",
+  "template": "{{ -7.5 % -2 }}",
+  "data": {}
+ },
+ {
+  "name": "compare bool strings",
+  "template": "{{ true < 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "arithmetic chain parens",
+  "template": "{{ ((1 + 2) * (3 + 4)) / 7 }}",
+  "data": {}
+ },
+ {
+  "name": "unary nested minus",
+  "template": "{{ -(-(-1)) }}",
+  "data": {}
+ },
+ {
+  "name": "big add negative",
+  "template": "{{ -9223372036854775807 - 2 }}",
+  "data": {}
+ },
+ {
+  "name": "big mul three",
+  "template": "{{ 9223372036854775807 * 3 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined nested loop both",
+  "template": "{% for a in [missing] %}{% for b in missing %}x{% endfor %}{{ a | default('d') }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "undefined arithmetic div",
+  "template": "{{ missing / 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined floor div",
+  "template": "{{ missing // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined mod",
+  "template": "{{ missing % 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined pow",
+  "template": "{{ missing ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined unary minus",
+  "template": "{{ -missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined getitem call",
+  "template": "{{ missing['k'](1) }}",
+  "data": {}
+ },
+ {
+  "name": "int undefined compare",
+  "template": "{{ missing == 0 }} {{ missing < 1 }}",
+  "data": {}
+ },
+ {
+  "name": "none vs undefined in dict key",
+  "template": "{{ {none: 'a'}[none] }} {{ {missing: 'a'}[missing] }}",
+  "data": {}
+ },
+ {
+  "name": "set markup upper autoescape",
+  "template": "{% set x %}<b>{% endset %}{{ x | upper }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "filter chain on tuple",
+  "template": "{{ (1, 2) | reverse | first }}",
+  "data": {}
+ },
+ {
+  "name": "method on filter result list",
+  "template": "{{ [3,1] | sort | first }}",
+  "data": {}
+ },
+ {
+  "name": "expression dict key with filter",
+  "template": "{{ d[(1 | string)] }}",
+  "data": {
+   "d": {
+    "1": "v"
+   }
+  }
+ },
+ {
+  "name": "nested ternary in arg",
+  "template": "{{ [1,2] | join('a' if true else 'b') }}",
+  "data": {}
+ },
+ {
+  "name": "deep method chain string",
+  "template": "{{ 'a b'.split()[0].upper() }}",
+  "data": {}
+ },
+ {
+  "name": "test arg with parens",
+  "template": "{{ 4 is divisibleby (2) }}",
+  "data": {}
+ },
+ {
+  "name": "multiline expression in var",
+  "template": "{{\n 1 +\n 2\n}}",
+  "data": {}
  }
 ]
