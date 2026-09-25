@@ -684,6 +684,19 @@ y")
       render_env("x\n  {# c #}\ny", lstrip_blocks: true).should eq("x\n\ny")
     end
   end
+
+  describe "parity: round 20" do
+    it "compares big-int strings with ints exactly" do
+      KrikriJinja.render("{{ 9223372036854775807 + 1 > 9223372036854775807 }}").should eq("True")
+      KrikriJinja.render("{{ 9223372036854775808 == 9223372036854775808 }}").should eq("True")
+    end
+
+    it "raises on zero raised to a negative power" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ 0 ** -1 }}")
+      end
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
