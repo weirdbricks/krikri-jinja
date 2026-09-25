@@ -279,8 +279,10 @@ module KrikriJinja
           idx = text_count_before > 0 ? text_count_before - 1 : nil
           if idx && out_tokens[idx].type == TokenType::Text
             tok = out_tokens[idx]
-            stripped_text = tok.value.sub(/[ \t]+\Z/, "")
-            if stripped_text != tok.value
+            nl = tok.value.rindex('\n')
+            tail = nl ? tok.value[(nl + 1)..] : tok.value
+            if !tail.empty? && tail.matches?(/^[ \t]+$/)
+              stripped_text = nl ? tok.value[0..nl] : ""
               out_tokens[idx] = Token.new(TokenType::Text, stripped_text, tok.line)
               out_tokens.delete_at(idx) if stripped_text.empty?
             end

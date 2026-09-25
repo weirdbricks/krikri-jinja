@@ -879,7 +879,12 @@ module KrikriJinja
       x = as_int(a)
       y = as_int(b)
       if x && y
-        x - y
+        begin
+          x - y
+        rescue OverflowError
+          ny = y >= 0 ? -y : (y == Int64::MIN ? 9223372036854775808i128 : -y)
+          KrikriJinja.big_add(x.to_s, ny.to_s)
+        end
       elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
         (x ? x.to_f64 : a.as(Float64)) - (y ? y.to_f64 : b.as(Float64))
       else

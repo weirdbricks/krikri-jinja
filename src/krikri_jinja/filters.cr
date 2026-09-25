@@ -31,8 +31,8 @@ module KrikriJinja
     end
     AnyValue.new(s.join)
   end
-  register_filter("trim") do |v, args, _k, _c|
-    chars = args[0]?.try(&.raw.as?(String)) || " \t\r\n"
+  register_filter("trim") do |v, args, kwargs, _c|
+    chars = args[0]?.try(&.raw.as?(String)) || kwargs["chars"]?.try(&.raw.as?(String)) || " \t\r\n"
     AnyValue.new(stringify(v).strip(chars))
   end
   register_filter("length") { |v, _a, _k, _c| AnyValue.new(length_of(v)) }
@@ -123,7 +123,7 @@ module KrikriJinja
         result << item
       end
     end
-    AnyValue.new(result)
+    AnyValue.new(GeneratorValue.new(result))
   end
   register_filter("min") do |v, _args, kwargs, _c|
     items = to_iterable(v)
@@ -270,13 +270,14 @@ module KrikriJinja
     raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String)
     amount = (args[0]?.try(&.raw.as?(Int64)) || kwargs["width"]?.try(&.raw.as?(Int64)) || 4i64)
     first = (kwargs["first"]? || kwargs["indentfirst"]? || AnyValue.new(false)).raw == true || args[1]?.try(&.raw) == true
+    blank = (kwargs["blank"]? || args[2]? || AnyValue.new(false)).raw == true
     if amount <= 0
       AnyValue.new(stringify(v))
     else
       prefix = first ? " " * amount : ""
       lines = stringify(v).split('\n')
       lines_out = [prefix + lines[0]]
-      lines_out.concat(lines[1..].map { |l| l.empty? ? l : (" " * amount) + l })
+      lines_out.concat(lines[1..].map { |l| (!blank && l.empty?) ? l : (" " * amount) + l })
       AnyValue.new(lines_out.join('\n'))
     end
   end
@@ -867,6 +868,7 @@ module KrikriJinja
              ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
                width = args[0]?.try(&.raw.as?(Int64)) || 0i64
                fill = args[1]?.try(&.raw.as?(String)) || " "
+               raise TemplateError.new("The fill character must be exactly one character long", 0) if fill.size > 1
                fc = fill.empty? ? ' ' : fill[0]
                name == "ljust" ? AnyValue.new(s.ljust(width, fc)) : AnyValue.new(s.rjust(width, fc))
              end
@@ -962,6 +964,7 @@ module KrikriJinja
              ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
                width = args[0]?.try(&.raw.as?(Int64)) || 0i64
                fill = args[1]?.try(&.raw.as?(String)) || " "
+               raise TemplateError.new("The fill character must be exactly one character long", 0) if fill.size > 1
                fc = fill.empty? ? ' ' : fill[0]
                rem = width - s.size
                if rem <= 0

@@ -166,6 +166,10 @@ module KrikriJinja
       x.items.zip(y.items).all? { |p, q| values_equal(p, q) }
     elsif (x.is_a?(Bool) && y.is_a?(Int64)) || (x.is_a?(Int64) && y.is_a?(Bool))
       (x.is_a?(Bool) ? (x ? 1 : 0) : x.as(Int64)) == (y.is_a?(Bool) ? (y ? 1 : 0) : y.as(Int64))
+    elsif (x.is_a?(Markup) && y.is_a?(String))
+      x.value == y
+    elsif (x.is_a?(String) && y.is_a?(Markup))
+      x == y.value
     elsif (x.is_a?(Bool) && y.is_a?(Float64))
       (x ? 1.0 : 0.0) == y
     elsif (x.is_a?(Float64) && y.is_a?(Bool))
