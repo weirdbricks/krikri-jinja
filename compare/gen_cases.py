@@ -1896,6 +1896,94 @@ add("deep ternary chain", "{{ 'a' if false else 'b' if false else 'c' }}")
 add("loop var name shadow global", "{% set loop = 'x' %}{{ loop | default('d') }}")
 add("macro name reuse across blocks", "{% block a %}{% macro m() %}M{% endmacro %}{{ m() }}{% endblock %}{% block b %}{% macro m() %}N{% endmacro %}{{ m() }}{% endblock %}")
 
+
+# ================= edge-case expansion (round 13) =================
+
+# --- filters: less common ones ------------------------------------------------
+add("pprint", "{{ {'a': 1} | pprint }}")
+add("format dict access", "{{ '%s' | format(d) }}", {"d": {"a": 1}})
+add("attr filter", "{{ users | attr('n') | join(',') }}", {"users": [{"n": "a"}]})
+add("map attribute int", "{{ [(1, 'a')] | map(attribute=1) | join(',') }}")
+add("batch attr", "{% for r in users | batch(2, {'n': 'x'}) %}[{{ r | map(attribute='n') | join(',') }}]{% endfor %}",
+    {"users": [{"n": "a"}, {"n": "b"}, {"n": "c"}]})
+add("slice attr", "{% for c in users | slice(2) | map('map', ...) %}x{% endfor %}", {"users": []})
+add("tojson sorted deep", "{{ {'b': {'d': 1, 'c': 2}} | tojson }}")
+add("wordcount punctuation", "{{ 'a, b. c?' | wordcount }}")
+add("title with newlines", "{{ 'a\nb c' | title }}")
+add("urlencode empty string", "{{ '' | urlencode }}|")
+add("escape empty", "{{ '' | escape }}|")
+add("capitalize whitespace", "{{ ' a' | capitalize }}")
+add("trim numbers", "{{ 5 | trim }}")
+add("striptags entities numeric", "{{ 'a&#65;b' | striptags }}")
+add("indent none arg", "{{ 'a\\nb' | indent(none) }}|")
+
+# --- string methods: rounding out ------------------------------------------------
+add("str find on empty", "{{ ''.find('a') }} {{ ''.rfind('a') }}")
+add("str split no args", "{{ ' a  b '.split() | join(',') }}")
+add("str title single", "{{ 'a'.title() }}")
+add("str isdigit unicode digit", "{{ '\\u0660'.isdigit() }}")
+add("str swapcase empty", "{{ ''.swapcase() }}|")
+add("str ljust default fill", "{{ 'a'.ljust(3) }}|")
+add("str center default fill", "{{ 'a'.center(3) }}|")
+add("str count case", "{{ 'aAa'.count('a') }}")
+add("str removeprefix empty", "{{ 'ab'.removeprefix('') }}")
+add("str partition single", "{{ 'ab'.partition('ab') | join('|') }}")
+
+# --- loop: round 5 ------------------------------------------------------------------
+add("recursive through loop callable", "{% for i in data recursive %}[{{ i.v }}{{ loop(i.c | default([])) }}]{% endfor %}",
+    {"data": [{"v": "a", "c": [{"v": "b", "c": []}]}]})
+add("loop.index0 recursion", "{% for i in data recursive %}{{ loop.index0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("for filtered all out", "{% for x in [1,2] if x > 5 %}x{% else %}e{% endfor %}")
+add("loop.revindex filtered", "{% for x in [1,2,3] if x != 2 %}{{ loop.revindex }}{% endfor %}")
+add("for over zip-like pairs", "{% for a, b in [[1,2],[3,4]] %}{{ a }}-{{ b }};{% endfor %}")
+add("loop depth in non-recursive nested recursive", "{% for a in data recursive %}{{ loop.depth }}{% for b in a.c | default([]) %}{{ loop.depth }}{% endfor %}{% endfor %}",
+    {"data": [{"c": [{}]}]})
+
+# --- inheritance: round 8 -------------------------------------------------------------
+add("super with context var", "{% extends 'base.html' %}{% block b %}{{ super() }}{{ v }}{% endblock %}", {"v": "V"}, templates={
+    "base.html": "{% block b %}B{% endblock %}"})
+add("block in if in parent", "{% extends 'base.html' %}{% block b %}C{% endblock %}", templates={
+    "base.html": "{% if true %}{% block b %}D{% endblock %}{% endif %}"})
+add("import in included template", "{% include 'p.html' %}", templates={
+    "p.html": "{% import 'm.html' as m %}{{ m.v }}",
+    "m.html": "{% set v = 'IV' %}"})
+add("nested extends with blocks in both", "{% extends 'mid.html' %}{% block a %}CA{% endblock %}{% block b %}CB{% endblock %}", templates={
+    "base.html": "{% block a %}BA{% endblock %}-{% block b %}BB{% endblock %}",
+    "mid.html": "{% extends 'base.html' %}{% block a %}MA({{ super() }}){% endblock %}"})
+
+# --- whitespace: round 9 ------------------------------------------------------------------
+add("marker on elif chain", "{% if false %}a\n{%- elif true -%}\nb\n{%- endif %}")
+add("lstrip deep nested", "{% for i in [1] %}\n  {% if true %}\n    x\n  {% endif %}\n{% endfor %}", lstrip_blocks=True, trim_blocks=True)
+add("trim between markers", "a\n{{- 'x' }}\n{{- 'y' -}}\nz")
+add("raw around markers", "{% raw -%}\nX\n{%- endraw %}")
+
+# --- numbers: round 9 ------------------------------------------------------------------------
+add("float tiny repr", "{{ 1e-7 }} {{ 1.5e-10 }}")
+add("big int compare float", "{{ 9223372036854775807 == 9223372036854775807.0 }}")
+add("neg pow int result", "{{ (-2) ** 3 }}")
+add("mod float precision", "{{ 5.5 % 2.0 }}")
+add("int div round toward zero", "{{ -7 // 2 }} {{ int(-7 / 2) }}")
+add("sum bools floats", "{{ [true, 1.5] | sum }}")
+
+# --- undefined: round 4 -----------------------------------------------------------------------
+add("undefined default nested", "{{ missing.a | default(missing.b) | default('d') }}")
+add("undefined in arithmetic guarded", "{{ (missing + 1) if missing is defined else 'ok' }}")
+add("undefined iteration in comprehension style", "{{ [missing] | join(',') }}")
+add("undefined attr of none", "{{ none.a | default('d') }}")
+add("undefined dict access default", "{{ d[missing] | default('d') }}", {"d": {"a": 1}})
+
+# --- misc: round 8 -------------------------------------------------------------------------------
+add("filter block with kwargs", "{% filter indent(2, true) %}a\\nb{% endfilter %}|")
+add("set tuple unpack", "{% set a, b = (1, 2) %}{{ a }}{{ b }}")
+add("set from filter chain", "{% set x = ' a ' | trim | upper %}{{ x }}")
+add("nested macro in macro call", "{% macro outer(fn) %}{{ fn() }}{% endmacro %}{% macro inner() %}I{% endmacro %}{{ outer(inner) }}")
+add("method chain on tuple", "{{ (1, 2) | join('+') }}")
+add("expression in dict value", "{{ {'k': 1 + 2} }}")
+add("boolean keys tojson", "{{ {true: 1, false: 0} | tojson }}")
+add("multiline string in template", "{{ 'a' }}")
+add("deeply nested parens", "{{ ((1)) }} {{ ((( 'x' ))) }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")

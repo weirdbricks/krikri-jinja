@@ -8692,5 +8692,378 @@
   "name": "macro name reuse across blocks",
   "template": "{% block a %}{% macro m() %}M{% endmacro %}{{ m() }}{% endblock %}{% block b %}{% macro m() %}N{% endmacro %}{{ m() }}{% endblock %}",
   "data": {}
+ },
+ {
+  "name": "pprint",
+  "template": "{{ {'a': 1} | pprint }}",
+  "data": {}
+ },
+ {
+  "name": "format dict access",
+  "template": "{{ '%s' | format(d) }}",
+  "data": {
+   "d": {
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "attr filter",
+  "template": "{{ users | attr('n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map attribute int",
+  "template": "{{ [(1, 'a')] | map(attribute=1) | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "batch attr",
+  "template": "{% for r in users | batch(2, {'n': 'x'}) %}[{{ r | map(attribute='n') | join(',') }}]{% endfor %}",
+  "data": {
+   "users": [
+    {
+     "n": "a"
+    },
+    {
+     "n": "b"
+    },
+    {
+     "n": "c"
+    }
+   ]
+  }
+ },
+ {
+  "name": "slice attr",
+  "template": "{% for c in users | slice(2) | map('map', ...) %}x{% endfor %}",
+  "data": {
+   "users": []
+  }
+ },
+ {
+  "name": "tojson sorted deep",
+  "template": "{{ {'b': {'d': 1, 'c': 2}} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "wordcount punctuation",
+  "template": "{{ 'a, b. c?' | wordcount }}",
+  "data": {}
+ },
+ {
+  "name": "title with newlines",
+  "template": "{{ 'a\nb c' | title }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode empty string",
+  "template": "{{ '' | urlencode }}|",
+  "data": {}
+ },
+ {
+  "name": "escape empty",
+  "template": "{{ '' | escape }}|",
+  "data": {}
+ },
+ {
+  "name": "capitalize whitespace",
+  "template": "{{ ' a' | capitalize }}",
+  "data": {}
+ },
+ {
+  "name": "trim numbers",
+  "template": "{{ 5 | trim }}",
+  "data": {}
+ },
+ {
+  "name": "striptags entities numeric",
+  "template": "{{ 'a&#65;b' | striptags }}",
+  "data": {}
+ },
+ {
+  "name": "indent none arg",
+  "template": "{{ 'a\\nb' | indent(none) }}|",
+  "data": {}
+ },
+ {
+  "name": "str find on empty",
+  "template": "{{ ''.find('a') }} {{ ''.rfind('a') }}",
+  "data": {}
+ },
+ {
+  "name": "str split no args",
+  "template": "{{ ' a  b '.split() | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "str title single",
+  "template": "{{ 'a'.title() }}",
+  "data": {}
+ },
+ {
+  "name": "str isdigit unicode digit",
+  "template": "{{ '\\u0660'.isdigit() }}",
+  "data": {}
+ },
+ {
+  "name": "str swapcase empty",
+  "template": "{{ ''.swapcase() }}|",
+  "data": {}
+ },
+ {
+  "name": "str ljust default fill",
+  "template": "{{ 'a'.ljust(3) }}|",
+  "data": {}
+ },
+ {
+  "name": "str center default fill",
+  "template": "{{ 'a'.center(3) }}|",
+  "data": {}
+ },
+ {
+  "name": "str count case",
+  "template": "{{ 'aAa'.count('a') }}",
+  "data": {}
+ },
+ {
+  "name": "str removeprefix empty",
+  "template": "{{ 'ab'.removeprefix('') }}",
+  "data": {}
+ },
+ {
+  "name": "str partition single",
+  "template": "{{ 'ab'.partition('ab') | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "recursive through loop callable",
+  "template": "{% for i in data recursive %}[{{ i.v }}{{ loop(i.c | default([])) }}]{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "v": "a",
+     "c": [
+      {
+       "v": "b",
+       "c": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "loop.index0 recursion",
+  "template": "{% for i in data recursive %}{{ loop.index0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "for filtered all out",
+  "template": "{% for x in [1,2] if x > 5 %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.revindex filtered",
+  "template": "{% for x in [1,2,3] if x != 2 %}{{ loop.revindex }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for over zip-like pairs",
+  "template": "{% for a, b in [[1,2],[3,4]] %}{{ a }}-{{ b }};{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop depth in non-recursive nested recursive",
+  "template": "{% for a in data recursive %}{{ loop.depth }}{% for b in a.c | default([]) %}{{ loop.depth }}{% endfor %}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {}
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "super with context var",
+  "template": "{% extends 'base.html' %}{% block b %}{{ super() }}{{ v }}{% endblock %}",
+  "data": {
+   "v": "V"
+  },
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "block in if in parent",
+  "template": "{% extends 'base.html' %}{% block b %}C{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% if true %}{% block b %}D{% endblock %}{% endif %}"
+  }
+ },
+ {
+  "name": "import in included template",
+  "template": "{% include 'p.html' %}",
+  "data": {},
+  "templates": {
+   "p.html": "{% import 'm.html' as m %}{{ m.v }}",
+   "m.html": "{% set v = 'IV' %}"
+  }
+ },
+ {
+  "name": "nested extends with blocks in both",
+  "template": "{% extends 'mid.html' %}{% block a %}CA{% endblock %}{% block b %}CB{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block a %}BA{% endblock %}-{% block b %}BB{% endblock %}",
+   "mid.html": "{% extends 'base.html' %}{% block a %}MA({{ super() }}){% endblock %}"
+  }
+ },
+ {
+  "name": "marker on elif chain",
+  "template": "{% if false %}a\n{%- elif true -%}\nb\n{%- endif %}",
+  "data": {}
+ },
+ {
+  "name": "lstrip deep nested",
+  "template": "{% for i in [1] %}\n  {% if true %}\n    x\n  {% endif %}\n{% endfor %}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true,
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "trim between markers",
+  "template": "a\n{{- 'x' }}\n{{- 'y' -}}\nz",
+  "data": {}
+ },
+ {
+  "name": "raw around markers",
+  "template": "{% raw -%}\nX\n{%- endraw %}",
+  "data": {}
+ },
+ {
+  "name": "float tiny repr",
+  "template": "{{ 1e-7 }} {{ 1.5e-10 }}",
+  "data": {}
+ },
+ {
+  "name": "big int compare float",
+  "template": "{{ 9223372036854775807 == 9223372036854775807.0 }}",
+  "data": {}
+ },
+ {
+  "name": "neg pow int result",
+  "template": "{{ (-2) ** 3 }}",
+  "data": {}
+ },
+ {
+  "name": "mod float precision",
+  "template": "{{ 5.5 % 2.0 }}",
+  "data": {}
+ },
+ {
+  "name": "int div round toward zero",
+  "template": "{{ -7 // 2 }} {{ int(-7 / 2) }}",
+  "data": {}
+ },
+ {
+  "name": "sum bools floats",
+  "template": "{{ [true, 1.5] | sum }}",
+  "data": {}
+ },
+ {
+  "name": "undefined default nested",
+  "template": "{{ missing.a | default(missing.b) | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined in arithmetic guarded",
+  "template": "{{ (missing + 1) if missing is defined else 'ok' }}",
+  "data": {}
+ },
+ {
+  "name": "undefined iteration in comprehension style",
+  "template": "{{ [missing] | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined attr of none",
+  "template": "{{ none.a | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined dict access default",
+  "template": "{{ d[missing] | default('d') }}",
+  "data": {
+   "d": {
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "filter block with kwargs",
+  "template": "{% filter indent(2, true) %}a\\nb{% endfilter %}|",
+  "data": {}
+ },
+ {
+  "name": "set tuple unpack",
+  "template": "{% set a, b = (1, 2) %}{{ a }}{{ b }}",
+  "data": {}
+ },
+ {
+  "name": "set from filter chain",
+  "template": "{% set x = ' a ' | trim | upper %}{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "nested macro in macro call",
+  "template": "{% macro outer(fn) %}{{ fn() }}{% endmacro %}{% macro inner() %}I{% endmacro %}{{ outer(inner) }}",
+  "data": {}
+ },
+ {
+  "name": "method chain on tuple",
+  "template": "{{ (1, 2) | join('+') }}",
+  "data": {}
+ },
+ {
+  "name": "expression in dict value",
+  "template": "{{ {'k': 1 + 2} }}",
+  "data": {}
+ },
+ {
+  "name": "boolean keys tojson",
+  "template": "{{ {true: 1, false: 0} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "multiline string in template",
+  "template": "{{ 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "deeply nested parens",
+  "template": "{{ ((1)) }} {{ ((( 'x' ))) }}",
+  "data": {}
  }
 ]
