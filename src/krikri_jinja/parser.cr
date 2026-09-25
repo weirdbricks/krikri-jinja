@@ -864,7 +864,8 @@ module KrikriJinja
       case tok.type
       when TokenType::Int
         advance
-        Nodes::ConstNode.new(tok.value.to_i64, line)
+        # int literals beyond Int64 become big-int decimal strings
+        Nodes::ConstNode.new(tok.value.to_i64? || tok.value, line)
       when TokenType::Float
         advance
         Nodes::ConstNode.new(tok.value.to_f64, line)
