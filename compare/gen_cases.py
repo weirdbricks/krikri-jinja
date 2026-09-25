@@ -2064,6 +2064,78 @@ add("kwarg with expression value", "{{ 'ab' | truncate(length=2 + 1, killwords=t
 add("tuple in dict value", "{{ {'t': (1, 2)} }}")
 add("method on int literal error", "{{ (1).bit_length() }}")
 
+
+# ================= edge-case expansion (round 15) =================
+
+# --- filter chains: deeper ------------------------------------------------------
+add("map reject map", "{{ users | map(attribute='n') | reject('eq', 'b') | join(',') }}",
+    {"users": [{"n": "a"}, {"n": "b"}, {"n": "c"}]})
+add("batch of strings", "{% for r in 'abcd' | batch(2) %}[{{ r | join }}]{% endfor %}")
+add("groupby attr then join list", "{% for g in items | groupby('k') %}{{ g.list | map(attribute='v') | join('|') }};{% endfor %}",
+    {"items": [{"k": 1, "v": "a"}, {"k": 1, "v": "b"}]})
+add("select on string", "{{ 'abc' | select('in', 'ac') | join(',') }}")
+add("min of generator", "{{ [2,1,3] | map('float') | min }}")
+add("unique of tuples", "{{ [(1,), (1,), (2,)] | unique | length }}")
+add("truncate after upper", "{{ 'abcdefgh' | upper | truncate(5, true, '...', 0) }}")
+add("indent after join", "{{ ['a', 'b'] | join('\n') | indent(2) }}|")
+add("tojson of markup list", "{{ ['<x>'] | tojson }}", autoescape=False)
+add("urlencode of none", "{{ none | urlencode }}")
+
+# --- whitespace: round 11 -----------------------------------------------------------
+add("marker between nested ifs", "{% if true %}\n {%- if true %}a{% endif %}\n{% endif %}")
+add("lstrip after var line", "{{ 1 }}\n   {% if true %}x{% endif %}", lstrip_blocks=True)
+add("trim blocks raw", "a\n{% raw %}\nb\n{% endraw %}\nc", trim_blocks=True)
+add("marker on with", "a\n  {%- with x = 1 %}{{ x }}{%- endwith %}")
+
+# --- loops: round 6 -------------------------------------------------------------------
+add("loop over dict values()", "{% for v in {'a': 1}.values() %}{{ v }}{% endfor %}")
+add("loop over dict keys()", "{% for k in {'a': 1}.keys() %}{{ k }}{% endfor %}")
+add("loop over dict items()", "{% for k, v in {'a': 1}.items() %}{{ k }}{{ v }}{% endfor %}")
+add("recursive loop over empty root", "{% for i in data recursive %}{{ loop(i.c | default([])) }}{% endfor %}", {"data": []})
+add("for filter references loop", "{% for x in [1,2,3] if loop.index != 2 %}{{ x }}{% endfor %}")
+add("nested for filter outer var", "{% for a in [1,2] %}{% for b in [1,2] if b == a %}{{ a }}{{ b }}{% endfor %}{% endfor %}")
+
+# --- macros: round 4 --------------------------------------------------------------------
+add("macro calling imported macro", "{% import 'm.html' as m %}{% macro local() %}L{{ m.g() }}{% endmacro %}{{ local() }}", templates={
+    "m.html": "{% macro g() %}G{% endmacro %}"})
+add("macro default with kwargs ref", "{% macro m(a, k=kwargs | length) %}{{ a }}{{ k }}{% endmacro %}{{ m(1) }} {{ m(1, x=2) }}")
+add("macro nested call body scope", "{% macro m() %}{{ caller() }}{% endmacro %}{% call m() %}{% set x = 1 %}{{ x }}{% endcall %}")
+add("macro shadow global function", "{% macro dict(a) %}D{{ a }}{% endmacro %}{{ dict(1) }}|{{ dict(a=2) }}")
+
+# --- inheritance: round 10 ------------------------------------------------------------------
+add("block in nested include in block", "{% extends 'base.html' %}{% block b %}{% include 'p.html' %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "p.html": "{% block inner %}X{% endblock %}"})
+add("import then include same module", "{% import 'm.html' as m %}{% include 'm.html' %}{{ m.v }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("super chain with sets", "{% extends 'mid.html' %}{% block b %}C{{ super() }}{% endblock %}", templates={
+    "base.html": "{% set v = 1 %}{% block b %}B{{ v }}{% endblock %}",
+    "mid.html": "{% extends 'base.html' %}{% block b %}M({{ super() }}){% endblock %}"})
+
+# --- numbers: round 11 -------------------------------------------------------------------------
+add("float equality close", "{{ 0.1 + 0.2 == 0.3 }} {{ (0.1 + 0.2) - 0.3 < 1e-9 }}")
+add("int div negative floor", "{{ -1 // 2 }} {{ 1 // -2 }}")
+add("pow big negative", "{{ 10 ** -2 }}")
+add("float inf compare", "{{ 1e308 * 10 > 1e308 }}")
+add("bool arithmetic order", "{{ false + true * 2 }}")
+add("long add chain", "{{ 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 }}")
+
+# --- undefined: round 6 ---------------------------------------------------------------------------
+add("undefined in filter chain deep", "{{ missing | join(',') | default('d') }}")
+add("undefined attr default chain", "{{ missing.a.b | default('x') }}")
+add("undefined compared to none", "{{ missing == none }} {{ none == missing }}")
+add("undefined with loop var name", "{% for missing in [1] %}{{ missing }}{% endfor %}")
+
+# --- misc: round 10 ----------------------------------------------------------------------------------
+add("escape length after markup", "{{ ('<x>' | safe) | escape | length }}", autoescape=False)
+add("filter with tuple arg", "{{ 'aXb' | replace('X', ('y' | upper)) }}")
+add("dict literal with tuple value access", "{{ {'t': (1, 2)}.t[1] }}")
+add("nested attribute assignment namespace", "{% set ns = namespace(a=namespace(b=1)) %}{% set ns.a.b = 2 %}{{ ns.a.b }}")
+add("loop in set block", "{% set x %}{% for i in [1,2] %}{{ i }}{% endfor %}{% endset %}{{ x }}")
+add("concat in test arg", "{{ 'a' is eq ('a' ~ '') }}")
+add("filter in test arg", "{{ 4 is divisibleby (2 | first if false else 2) }}")
+add("call expression on filter result", "{{ [1,2] | first.to_s }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
