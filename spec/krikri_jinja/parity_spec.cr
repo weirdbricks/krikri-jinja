@@ -581,6 +581,33 @@ y")
       end
     end
   end
+
+  describe "parity: round 13" do
+    it "compares huge ints and floats exactly" do
+      KrikriJinja.render("{{ 9223372036854775807 == 9223372036854775807.0 }}").should eq("False")
+      KrikriJinja.render("{{ 3 == 3.0 }}").should eq("True")
+    end
+
+    it "accepts Markup in indent and rejects none width" do
+      render_env("{% filter indent(2, true) %}a\nb{% endfilter %}|", autoescape: true)
+        .should eq("  a\n  b|")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ 'a\nb' | indent(none) }}")
+      end
+    end
+
+    it "maps numeric attributes as subscripts" do
+      KrikriJinja.render("{{ [(1, 'a')] | map(attribute=1) | join(',') }}").should eq("a")
+    end
+
+    it "decodes numeric html entities in striptags" do
+      KrikriJinja.render("{{ 'a&#65;b' | striptags }}").should eq("aAb")
+    end
+
+    it "treats unicode digits with isdigit" do
+      KrikriJinja.render("{{ '\u0660'.isdigit() }}").should eq("True")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
