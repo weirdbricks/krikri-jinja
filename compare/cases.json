@@ -9065,5 +9065,314 @@
   "name": "deeply nested parens",
   "template": "{{ ((1)) }} {{ ((( 'x' ))) }}",
   "data": {}
+ },
+ {
+  "name": "generator repr guard",
+  "template": "{{ [1] | map('string') | select('string') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "map of map",
+  "template": "{{ [[1],[2]] | map('first') | map('string') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "select of batch",
+  "template": "{{ [1,2,3,4] | batch(2) | select('first') | length }}",
+  "data": {}
+ },
+ {
+  "name": "groupby of generator",
+  "template": "{% for g in [1,1,2] | map('string') | groupby('x') %}{{ g.grouper }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "unique then select",
+  "template": "{{ ['a','a','b'] | unique | select('eq', 'a') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "sort of generator",
+  "template": "{{ [3,1] | map('string') | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "reverse generator",
+  "template": "{{ [1,2] | map('string') | reverse | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "first of reject",
+  "template": "{{ [1,2] | reject('odd') | first }}",
+  "data": {}
+ },
+ {
+  "name": "sum selectattr chain",
+  "template": "{{ users | selectattr('v') | map(attribute='v') | sum }}",
+  "data": {
+   "users": [
+    {
+     "v": 2
+    },
+    {
+     "v": 3
+    }
+   ]
+  }
+ },
+ {
+  "name": "eq none vs empty",
+  "template": "{{ none == '' }} {{ none == [] }} {{ none == {} }}",
+  "data": {}
+ },
+ {
+  "name": "eq undefined containers",
+  "template": "{{ missing == [1] }} {{ [missing] == [none] }}",
+  "data": {}
+ },
+ {
+  "name": "lt bool int mixed",
+  "template": "{{ true < 2 }} {{ false < true }}",
+  "data": {}
+ },
+ {
+  "name": "eq tuple nested",
+  "template": "{{ ((1,),) == ((1,),) }}",
+  "data": {}
+ },
+ {
+  "name": "eq dict tuple key",
+  "template": "{{ {(1,): 'v'} == {(1,): 'v'} }}",
+  "data": {}
+ },
+ {
+  "name": "ne mixed num str",
+  "template": "{{ 1 != '1' }} {{ none != 0 }}",
+  "data": {}
+ },
+ {
+  "name": "recursive sibling order",
+  "template": "{% for i in data recursive %}{{ i.v }}{{ loop(i.c | default([])) }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "v": "a",
+     "c": [
+      {
+       "v": "b",
+       "c": []
+      }
+     ]
+    },
+    {
+     "v": "c",
+     "c": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "recursive loop index after call",
+  "template": "{% for i in data recursive %}{{ loop.index }}{{ loop(i.c | default([])) }};{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    },
+    {
+     "c": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "recursive empty call",
+  "template": "{% for i in data recursive %}{{ loop([]) if false }}{{ i }}{% endfor %}",
+  "data": {
+   "data": [
+    1
+   ]
+  }
+ },
+ {
+  "name": "recursive with filter and else",
+  "template": "{% for i in data recursive if i.v != 'x' %}{{ i.v }}{% else %}e{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "v": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "macro param defaults eval order",
+  "template": "{% macro m(a='x', b=a) %}{{ b }}{% endmacro %}{{ m() }}",
+  "data": {}
+ },
+ {
+  "name": "macro kwargs override positional",
+  "template": "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, a=2) }}",
+  "data": {}
+ },
+ {
+  "name": "caller with default param",
+  "template": "{% macro m() %}{{ caller('c') }}{% endmacro %}{% call m(x='d') %}{{ x }}{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "macro referencing later set",
+  "template": "{% macro m() %}{{ v | default('d') }}{% endmacro %}{{ m() }}{% set v = 1 %}",
+  "data": {}
+ },
+ {
+  "name": "extends relative depth",
+  "template": "{% extends 'mid.html' %}{% block b %}C{{ super() }}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}1{% endblock %}",
+   "mid.html": "{% extends 'base.html' %}{% block b %}2{{ super() }}{% endblock %}"
+  }
+ },
+ {
+  "name": "include inside block inside for",
+  "template": "{% extends 'base.html' %}{% block b %}{% for i in [1] %}{% include 'p.html' %}{% endfor %}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}{% endblock %}",
+   "p.html": "P{{ i }}"
+  }
+ },
+ {
+  "name": "macro imported used in parent block",
+  "template": "{% extends 'base.html' %}{% import 'm.html' as m %}{% block b %}{{ m.g() }}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}{% endblock %}",
+   "m.html": "{% macro g() %}G{% endmacro %}"
+  }
+ },
+ {
+  "name": "marker interleave blocks",
+  "template": "{% for i in [1,2] %}{% if i == 1 -%}X{% else -%}Y{% endif -%}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "var marker before comment",
+  "template": "a {{- 'b' }} {# c #} d",
+  "data": {}
+ },
+ {
+  "name": "lstrip with marker tag",
+  "template": "x\n  {%- set y = 1 %}{{ y }}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "raw between markers",
+  "template": "{%- raw -%} x {%- endraw -%}",
+  "data": {}
+ },
+ {
+  "name": "float pow assoc",
+  "template": "{{ 2.0 ** 3 ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "neg int pow neg",
+  "template": "{{ (-2) ** -3 }}",
+  "data": {}
+ },
+ {
+  "name": "big add float mix",
+  "template": "{{ 9223372036854775807 + 0.5 }}",
+  "data": {}
+ },
+ {
+  "name": "mod bool negative",
+  "template": "{{ -7 % true }}",
+  "data": {}
+ },
+ {
+  "name": "chain compare bools",
+  "template": "{{ true == 1 == 1.0 }}",
+  "data": {}
+ },
+ {
+  "name": "div int float forms",
+  "template": "{{ 6 / 2 }} {{ 6 // 2.0 }} {{ 6.0 // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined or undefined",
+  "template": "{{ (missing or other) | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined string op",
+  "template": "{{ missing + 'x' | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined attr in ternary",
+  "template": "{{ missing.a if missing else 'ok' }}",
+  "data": {}
+ },
+ {
+  "name": "nested undefined equality",
+  "template": "{{ [missing] == [missing] }}",
+  "data": {}
+ },
+ {
+  "name": "set block autoescape upper",
+  "template": "{% set x %}a{% endset %}{{ x | upper }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "filter block inside for",
+  "template": "{% for i in [1] %}{% filter upper %}a{{ i }}{% endfilter %}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "include output in expression",
+  "template": "{% set x %}{% include 'p.html' %}{% endset %}{{ x | upper }}",
+  "data": {},
+  "templates": {
+   "p.html": "p"
+  }
+ },
+ {
+  "name": "multiline dict literal",
+  "template": "{{ {\n 'a': 1,\n 'b': 2\n} | dictsort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "chained comparisons on results",
+  "template": "{{ [2,1] | sort | first == 1 }}",
+  "data": {}
+ },
+ {
+  "name": "kwarg with expression value",
+  "template": "{{ 'ab' | truncate(length=2 + 1, killwords=true) }}",
+  "data": {}
+ },
+ {
+  "name": "tuple in dict value",
+  "template": "{{ {'t': (1, 2)} }}",
+  "data": {}
+ },
+ {
+  "name": "method on int literal error",
+  "template": "{{ (1).bit_length() }}",
+  "data": {}
  }
 ]

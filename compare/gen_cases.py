@@ -1984,6 +1984,86 @@ add("boolean keys tojson", "{{ {true: 1, false: 0} | tojson }}")
 add("multiline string in template", "{{ 'a' }}")
 add("deeply nested parens", "{{ ((1)) }} {{ ((( 'x' ))) }}")
 
+
+# ================= edge-case expansion (round 14) =================
+
+# --- filter chains with generators -------------------------------------------
+add("generator repr guard", "{{ [1] | map('string') | select('string') | join(',') }}")
+add("map of map", "{{ [[1],[2]] | map('first') | map('string') | join(',') }}")
+add("select of batch", "{{ [1,2,3,4] | batch(2) | select('first') | length }}")
+add("groupby of generator", "{% for g in [1,1,2] | map('string') | groupby('x') %}{{ g.grouper }}{% endfor %}")
+add("unique then select", "{{ ['a','a','b'] | unique | select('eq', 'a') | join(',') }}")
+add("sort of generator", "{{ [3,1] | map('string') | sort | join(',') }}")
+add("reverse generator", "{{ [1,2] | map('string') | reverse | join(',') }}")
+add("first of reject", "{{ [1,2] | reject('odd') | first }}")
+add("sum selectattr chain", "{{ users | selectattr('v') | map(attribute='v') | sum }}",
+    {"users": [{"v": 2}, {"v": 3}]})
+
+# --- comparisons: cross-type ----------------------------------------------------
+add("eq none vs empty", "{{ none == '' }} {{ none == [] }} {{ none == {} }}")
+add("eq undefined containers", "{{ missing == [1] }} {{ [missing] == [none] }}")
+add("lt bool int mixed", "{{ true < 2 }} {{ false < true }}")
+add("eq tuple nested", "{{ ((1,),) == ((1,),) }}")
+add("eq dict tuple key", "{{ {(1,): 'v'} == {(1,): 'v'} }}")
+add("ne mixed num str", "{{ 1 != '1' }} {{ none != 0 }}")
+
+# --- loops: recursion stress ------------------------------------------------------
+add("recursive sibling order", "{% for i in data recursive %}{{ i.v }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"v": "a", "c": [{"v": "b", "c": []}]}, {"v": "c", "c": []}]})
+add("recursive loop index after call", "{% for i in data recursive %}{{ loop.index }}{{ loop(i.c | default([])) }};{% endfor %}",
+    {"data": [{"c": [{"c": []}]}, {"c": []}]})
+add("recursive empty call", "{% for i in data recursive %}{{ loop([]) if false }}{{ i }}{% endfor %}", {"data": [1]})
+add("recursive with filter and else", "{% for i in data recursive if i.v != 'x' %}{{ i.v }}{% else %}e{% endfor %}",
+    {"data": [{"v": "a"}]})
+
+# --- macros: signatures edge --------------------------------------------------------
+add("macro param defaults eval order", "{% macro m(a='x', b=a) %}{{ b }}{% endmacro %}{{ m() }}")
+add("macro kwargs override positional", "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, a=2) }}")
+add("caller with default param", "{% macro m() %}{{ caller('c') }}{% endmacro %}{% call m(x='d') %}{{ x }}{% endcall %}")
+add("macro referencing later set", "{% macro m() %}{{ v | default('d') }}{% endmacro %}{{ m() }}{% set v = 1 %}")
+
+# --- inheritance: round 9 --------------------------------------------------------------
+add("extends relative depth", "{% extends 'mid.html' %}{% block b %}C{{ super() }}{% endblock %}", templates={
+    "base.html": "{% block b %}1{% endblock %}",
+    "mid.html": "{% extends 'base.html' %}{% block b %}2{{ super() }}{% endblock %}"})
+add("include inside block inside for", "{% extends 'base.html' %}{% block b %}{% for i in [1] %}{% include 'p.html' %}{% endfor %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "p.html": "P{{ i }}"})
+add("macro imported used in parent block", "{% extends 'base.html' %}{% import 'm.html' as m %}{% block b %}{{ m.g() }}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "m.html": "{% macro g() %}G{% endmacro %}"})
+
+# --- whitespace: round 10 -----------------------------------------------------------------
+add("marker interleave blocks", "{% for i in [1,2] %}{% if i == 1 -%}X{% else -%}Y{% endif -%}{% endfor %}")
+add("var marker before comment", "a {{- 'b' }} {# c #} d")
+add("lstrip with marker tag", "x\n  {%- set y = 1 %}{{ y }}", lstrip_blocks=True)
+add("raw between markers", "{%- raw -%} x {%- endraw -%}")
+
+# --- numbers: round 10 ----------------------------------------------------------------------
+add("float pow assoc", "{{ 2.0 ** 3 ** 2 }}")
+add("neg int pow neg", "{{ (-2) ** -3 }}")
+add("big add float mix", "{{ 9223372036854775807 + 0.5 }}")
+add("mod bool negative", "{{ -7 % true }}")
+add("chain compare bools", "{{ true == 1 == 1.0 }}")
+add("div int float forms", "{{ 6 / 2 }} {{ 6 // 2.0 }} {{ 6.0 // 2 }}")
+
+# --- undefined: round 5 -----------------------------------------------------------------------
+add("undefined or undefined", "{{ (missing or other) | default('d') }}")
+add("undefined string op", "{{ missing + 'x' | default('d') }}")
+add("undefined attr in ternary", "{{ missing.a if missing else 'ok' }}")
+add("nested undefined equality", "{{ [missing] == [missing] }}")
+
+# --- misc: round 9 -------------------------------------------------------------------------------
+add("set block autoescape upper", "{% set x %}a{% endset %}{{ x | upper }}", autoescape=True)
+add("filter block inside for", "{% for i in [1] %}{% filter upper %}a{{ i }}{% endfilter %}{% endfor %}")
+add("include output in expression", "{% set x %}{% include 'p.html' %}{% endset %}{{ x | upper }}", templates={
+    "p.html": "p"})
+add("multiline dict literal", "{{ {\n 'a': 1,\n 'b': 2\n} | dictsort | join(',') }}")
+add("chained comparisons on results", "{{ [2,1] | sort | first == 1 }}")
+add("kwarg with expression value", "{{ 'ab' | truncate(length=2 + 1, killwords=true) }}")
+add("tuple in dict value", "{{ {'t': (1, 2)} }}")
+add("method on int literal error", "{{ (1).bit_length() }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
