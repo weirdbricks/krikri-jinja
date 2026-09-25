@@ -8,8 +8,8 @@ def self.big_pow(base : Int64, exp : Int64) : String
   e = exp
   while e > 0
     r = big_mul(r, b) if e & 1 == 1
-    b = big_mul(b, b)
     e >>= 1
+    b = big_mul(b, b) if e > 0
   end
   r
 end
@@ -166,8 +166,8 @@ def self.big_pow_str(base : String, exp : Int64) : String
   e = exp
   while e > 0
     r = big_mul(r, b) if e & 1 == 1
-    b = big_mul(b, b)
     e >>= 1
+    b = big_mul(b, b) if e > 0
   end
   r
 end

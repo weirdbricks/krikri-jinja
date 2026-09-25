@@ -126,11 +126,25 @@ module KrikriJinja
       AnyValue.new(GeneratorValue.new(to_iterable(v).reverse))
     end
   end
+  private def self.unique_hash_key(value : AnyValue) : AnyValue?
+    raw = value.raw
+    return nil if raw.is_a?(Float64) && (raw.as(Float64).nan? || raw.as(Float64).infinite?)
+    case raw
+    when String, Int64, BigIntValue, Float64, Bool, Nil, Undefined
+      value
+    when Markup
+      AnyValue.new(raw.as(Markup).value)
+    else
+      nil
+    end
+  end
+
   register_filter("unique") do |v, _a, kwargs, _c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     result = [] of AnyValue
-    keys = [] of AnyValue
+    seen = {} of String => AnyValue
+    unhashable = [] of AnyValue
     src = begin
       to_iterable(v)
     rescue
@@ -139,42 +153,47 @@ module KrikriJinja
     src.each do |item|
       key = attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item
       key = AnyValue.new(stringify(key).downcase) if !case_sensitive && key.raw.is_a?(String)
-      unless keys.any? { |x| values_equal(x, key) }
-        keys << key
+      if scalar = unique_hash_key(key)
+        encoded = KrikriJinja.dict_key(scalar)
+        alternate = KrikriJinja.dict_key_alt(scalar)
+        duplicate = seen.has_key?(encoded) || (alternate ? seen.has_key?(alternate) : false)
+        unless duplicate
+          seen[encoded] = scalar
+          seen[alternate] = scalar if alternate
+          result << item
+        end
+      elsif !unhashable.any? { |existing| values_equal(existing, key) }
+        unhashable << key
         result << item
       end
     end
     AnyValue.new(GeneratorValue.new(result))
   end
   register_filter("min") do |v, _args, kwargs, _c|
-    items = to_iterable(v)
-    if items.empty?
-      AnyValue.new(Undefined.new)
-    else
-      attr = kwargs["attribute"]?.try(&.raw.as?(String))
-      case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
-      best = items.reduce do |a, b|
-        ka = sort_key(attr ? (get_attr(a, attr) || AnyValue.new(nil)) : a, case_sensitive)
-        kb = sort_key(attr ? (get_attr(b, attr) || AnyValue.new(nil)) : b, case_sensitive)
-        compare_values(ka, kb) <= 0 ? a : b
-      end
-      AnyValue.wrap(best)
-    end
+    attr = kwargs["attribute"]?.try(&.raw.as?(String))
+    case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
+    extreme(to_iterable(v), attr, case_sensitive, false) || AnyValue.new(Undefined.new)
   end
   register_filter("max") do |v, _args, kwargs, _c|
-    items = to_iterable(v)
-    if items.empty?
-      AnyValue.new(Undefined.new)
-    else
-      attr = kwargs["attribute"]?.try(&.raw.as?(String))
-      case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
-      best = items.reduce do |a, b|
-        ka = sort_key(attr ? (get_attr(a, attr) || AnyValue.new(nil)) : a, case_sensitive)
-        kb = sort_key(attr ? (get_attr(b, attr) || AnyValue.new(nil)) : b, case_sensitive)
-        compare_values(ka, kb) >= 0 ? a : b
+    attr = kwargs["attribute"]?.try(&.raw.as?(String))
+    case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
+    extreme(to_iterable(v), attr, case_sensitive, true) || AnyValue.new(Undefined.new)
+  end
+
+  private def self.extreme(items : Array(AnyValue), attr : String?, case_sensitive : Bool, choose_max : Bool) : AnyValue?
+    return nil if items.empty?
+    best = items[0]
+    best_key = sort_key(attr ? (get_attr(best, attr) || AnyValue.new(nil)) : best, case_sensitive)
+    items.each_with_index do |item, index|
+      next if index == 0
+      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item, case_sensitive)
+      comparison = compare_values(key, best_key)
+      if (choose_max && comparison >= 0) || (!choose_max && comparison <= 0)
+        best = item
+        best_key = key
       end
-      AnyValue.wrap(best)
     end
+    AnyValue.wrap(best)
   end
 
   # Sort key applying case-insensitive lowering for strings (jinja's filters
@@ -200,11 +219,15 @@ module KrikriJinja
     reverse = (kwargs["reverse"]? || AnyValue.new(false)).raw == true
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     items = to_iterable(v)
-    sorted = stable_sort(items) do |a, b|
-      ka = sort_key(attr ? (get_attr(a, attr) || AnyValue.new(nil)) : a, case_sensitive)
-      kb = sort_key(attr ? (get_attr(b, attr) || AnyValue.new(nil)) : b, case_sensitive)
-      compare_values(ka, kb)
+    decorated = items.map_with_index do |item, index|
+      key = sort_key(attr ? (get_attr(item, attr) || AnyValue.new(nil)) : item, case_sensitive)
+      {item, key, index}
     end
+    decorated.sort! do |a, b|
+      comparison = compare_values(a[1], b[1])
+      comparison == 0 ? a[2] <=> b[2] : comparison
+    end
+    sorted = decorated.map(&.[0])
     sorted.reverse! if reverse
     AnyValue.new(sorted)
   end
@@ -356,7 +379,9 @@ module KrikriJinja
     AnyValue.new(result)
   end
   register_filter("wordcount") do |v, _a, _k, _c|
-    AnyValue.new(stringify(v).scan(/[\p{L}\p{N}_]+/).size.to_i64)
+    count = 0
+    stringify(v).scan(/[\p{L}\p{N}_]+/) { count += 1 }
+    AnyValue.new(count.to_i64)
   end
   register_filter("indent") do |v, args, kwargs, _c|
     raise TemplateError.new("unsupported operand type(s) for +=: 'int' and 'str'", 0) unless v.raw.is_a?(String) || v.raw.is_a?(Markup)
@@ -442,11 +467,12 @@ module KrikriJinja
                if !inner_kwargs.empty? && !KWARG_FILTERS.includes?(fname)
                  raise TemplateError.new("#{fname}() got an unexpected keyword argument", 0)
                end
+               positional_args = args[1..]
                max_args = MAX_POSITIONAL[fname]?
-               if max_args && args[1..].size > max_args
+               if max_args && positional_args.size > max_args
                  raise TemplateError.new("#{fname}() takes at most #{max_args} positional argument(s)", 0)
                end
-               to_iterable(v).map { |item| f.call(item, args[1..], inner_kwargs, c) }
+               to_iterable(v).map { |item| f.call(item, positional_args, inner_kwargs, c) }
              end
     AnyValue.new(GeneratorValue.new(result))
   end
@@ -1179,8 +1205,11 @@ module KrikriJinja
         AnyValue.new(KrikriJinja::SimpleCallable.new("get") do |args, _k, _c|
           key = args[0]
           enc = KrikriJinja.dict_key(key)
-          alt = KrikriJinja.dict_key_alt(key)
-          found = raw[enc]? || (alt ? raw[alt]? : nil)
+          found = raw[enc]?
+          unless found
+            alt = KrikriJinja.dict_key_alt(key)
+            found = raw[alt]? if alt
+          end
           found || args[1]? || AnyValue.new(nil)
         end)
       else raw[name]?
@@ -1199,7 +1228,7 @@ module KrikriJinja
           AnyValue.new(changed)
         end)
       else
-        raw.to_ctx_hash[name]?
+        raw.get(name)
       end
     when LoopCallable
       case name
@@ -1216,7 +1245,7 @@ module KrikriJinja
           AnyValue.new(changed)
         end)
       else
-        raw.to_ctx_hash[name]?
+        raw.get(name)
       end
     when Namespace then raw.data[name]?
     when Cycler
