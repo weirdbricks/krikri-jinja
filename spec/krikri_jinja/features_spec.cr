@@ -155,6 +155,38 @@ describe KrikriJinja do
         .should eq("1 a 7")
     end
 
+    it "supports Ansible integer range forms" do
+      KrikriJinja.render("{{ random(10, seed=42) }} {{ random(10, 20, seed=42) }} {{ random(10, 20, 2, seed=42) }}")
+        .should eq("1 11 10")
+      KrikriJinja.render("{{ 20 | random(start=10, step=2, seed=42) }}").should eq("10")
+    end
+
+    it "makes seeded random selection repeatable and seed-sensitive" do
+      KrikriJinja.render("{{ random(1000, seed=1) }}").should eq("137")
+      KrikriJinja.render("{{ random(1000, seed=1) }}").should eq("137")
+      KrikriJinja.render("{{ random(1000, seed=2) }}").should eq("978")
+      KrikriJinja.render("{{ [-5, -4, -3, -4, -5] | random(seed=1) }}").should eq("-4")
+    end
+
+    it "handles empty sequences, negative values, and steps" do
+      KrikriJinja.render("{{ [] | random }}|{{ random([]) }}|").should eq("||")
+      KrikriJinja.render("{{ random(-5, 0, seed=42) }} {{ random(20, 10, -2, seed=42) }}")
+        .should eq("-5 20")
+      KrikriJinja.render("{{ random(10, 20, 0, seed=42) }}").should eq("11")
+    end
+
+    it "rejects invalid random ranges and arguments" do
+      [
+        "{{ random(0) }}",
+        "{{ random(1, 2, 3, 4) }}",
+        "{{ random(1.5) }}",
+        "{{ random(1, 2, bad=3) }}",
+        "{{ [1, 2] | random(3) }}",
+      ].each do |template|
+        expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render(template) }
+      end
+    end
+
     it "safe/escape survive autoescape" do
       engine = KrikriJinja::Engine.new(nil, autoescape: true)
       engine.render_string("{{ v }}|{{ v | safe }}|{{ v | escape }}", {"v" => "<b>"} of String => KrikriJinja::AnyV)
