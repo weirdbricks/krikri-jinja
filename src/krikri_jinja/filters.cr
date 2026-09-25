@@ -370,20 +370,22 @@ module KrikriJinja
   end
   register_filter("groupby") do |v, args, kwargs, _c|
     attr = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("groupby requires an attribute", 0)
-    groups = [] of Tuple(AnyValue, Array(AnyValue))
+    case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
+    groups = [] of Tuple(AnyValue, String, Array(AnyValue))
     sorted_items = stable_sort(to_iterable(v)) do |a, b|
       compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(Undefined.new),
                      get_attr(b, attr) || kwargs["default"]? || AnyValue.new(Undefined.new))
     end
     sorted_items.each do |item|
       key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(Undefined.new)
-      if g = groups.find { |(k, _)| values_equal(k, key) }
-        g[1] << item
+      gkey = !case_sensitive && key.raw.is_a?(String) ? key.raw.as(String).downcase : stringify(key)
+      if g = groups.find { |(_, ck, _)| ck == gkey }
+        g[2] << item
       else
-        groups << {key, [item]}
+        groups << {key, gkey, [item]}
       end
     end
-    grouped = groups.map do |k, items|
+    grouped = groups.map do |k, _ck, items|
       h = {} of String => AnyValue
       h["grouper"] = k
       h["list"] = AnyValue.new(items)
