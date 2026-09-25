@@ -647,6 +647,32 @@ y")
       render_env("{{ ('x' | safe) == ('x' | safe) }}").should eq("True")
     end
   end
+
+  describe "parity: round 18" do
+    it "casts generator results to lists in reverse but not last" do
+      KrikriJinja.render("{{ [1,2] | map('string') | reverse | join(',') }}").should eq("2,1")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1,2] | map('string') | last }}")
+      end
+    end
+
+    it "keeps trim results Markup and macro results plain without autoescape" do
+      render_env("{{ ('<x>' | safe) | trim | escape }}").should eq("<x>")
+      render_env("{% macro m() %}<b>{% endmacro %}{{ m() | length }}").should eq("3")
+      render_env("{% macro m() %}<b>{% endmacro %}{{ m() | escape }}", autoescape: true).should eq("<b>")
+    end
+
+    it "shows loop to includes inside recursive loops only" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"p.html" => "{{ loop is defined }}"}))
+        .render_string("{% for i in [1] recursive %}{% include 'p.html' %}{% endfor %}",
+          KrikriJinja.context({} of String => String)).should eq("True")
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"p.html" => "{{ loop.index }}"}))
+          .render_string("{% for i in [1,2] %}{% include 'p.html' %}{% endfor %}",
+            KrikriJinja.context({} of String => String))
+      end
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
