@@ -206,6 +206,10 @@ module KrikriJinja
       (x <=> y.to_f64) || 0
     elsif x.is_a?(String) && y.is_a?(String)
       (x <=> y) || 0
+    elsif x.is_a?(String) && x.matches?(/^-?\d+$/) && y.is_a?(Int64)
+      big_string_int_cmp(x, y)
+    elsif x.is_a?(Int64) && y.is_a?(String) && y.matches?(/^-?\d+$/)
+      -(big_string_int_cmp(y, x))
     elsif x.is_a?(Bool) && y.is_a?(Bool)
       (x ? 1 : 0) <=> (y ? 1 : 0)
     elsif (x.is_a?(Bool) && y.is_a?(Int64)) || (x.is_a?(Int64) && y.is_a?(Bool))
@@ -234,6 +238,15 @@ module KrikriJinja
       raise TemplateError.new("cannot compare #{x.class} and #{y.class}", 0)
     end
   end
+  # Exact comparison of a decimal-string integer against an Int64.
+  def self.big_string_int_cmp(s : String, i : Int64) : Int32
+    sneg = s.starts_with?('-')
+    ineg = i < 0
+    return sneg ? -1 : 1 if sneg != ineg
+    mag = KrikriJinja.big_cmp(s.lstrip('-'), (i >= 0 ? i : -i).to_s)
+    sneg ? -mag : mag
+  end
+
   # Containment (`in`).
   def self.contains?(container : AnyValue, item : AnyValue) : Bool
     case c = container.raw
