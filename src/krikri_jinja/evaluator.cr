@@ -315,9 +315,11 @@ module KrikriJinja
     getter globals : Hash(String, AnyValue)
     getter options : LexerOptions
     getter autoescape : Bool
+    getter undefined : Undefined
 
     def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV,
-                   @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false)
+                   @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false,
+                   @undefined : Undefined = Undefined.new)
       globals = KrikriJinja.default_globals
       user_globals.each { |k, v| globals[k] = AnyValue.wrap(v) }
       @globals = globals
@@ -343,7 +345,7 @@ module KrikriJinja
     end
 
     private def render_variables(source : String, variables)
-      ctx = Context.new(@globals.dup, @loader)
+      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined)
       ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = AnyValue.wrap(v) }
       node = Parser.parse(source, @options)
@@ -586,7 +588,9 @@ module KrikriJinja
                                 when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
-                                when Undefined then [] of AnyValue
+                                when Undefined
+                                  raise TemplateError.new("'missing' is undefined", node.line) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
+                                  [] of AnyValue
                                 when GeneratorValue then raw.materialize
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
                                 end
@@ -782,7 +786,7 @@ module KrikriJinja
           @ctx.pop_scope
         end
       else
-        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape)
+        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined)
         sub_eval = Evaluator.new(sub_ctx, @engine)
         sub_eval.render_template(sub_node)
         @out << sub_eval.output.to_s
@@ -794,7 +798,7 @@ module KrikriJinja
              raise TemplateError.new("import expects a template name", node.line)
       source = @ctx.loader.try(&.get_source(name))
       raise TemplateError.new("template #{name.inspect} not found", node.line) unless source
-      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape)
+      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined)
       if node.context
         # {% import ... with context %}: the imported module resolves names
         # against the importing template's visible (non-loop) variables.
@@ -1233,7 +1237,7 @@ module KrikriJinja
       if obj.raw.is_a?(Undefined)
         raise TemplateError.new("'missing' is undefined", expr.line)
       end
-      get_attr(obj, expr.attr) || AnyValue.new(Undefined.new)
+      get_attr(obj, expr.attr) || AnyValue.new(@ctx.undefined)
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue

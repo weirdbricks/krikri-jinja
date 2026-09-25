@@ -90,6 +90,14 @@ describe KrikriJinja do
       KrikriJinja.render("{{ missing is string }} {{ missing is sequence }} {{ missing is iterable }} {{ missing is mapping }}").should eq("False True True False")
     end
 
+    it "supports StrictUndefined through the engine" do
+      engine = KrikriJinja::Engine.new(nil, undefined: KrikriJinja::StrictUndefined.new)
+      expect_raises(KrikriJinja::TemplateError) { engine.render_string("{{ missing }}") }
+      engine.render_string("{% if missing %}yes{% else %}no{% endif %}").should eq("no")
+      engine.render_string("{{ missing is defined }} {{ missing | default('fallback') }}").should eq("False fallback")
+      expect_raises(KrikriJinja::TemplateError) { engine.render_string("{% for x in missing %}{% endfor %}") }
+      expect_raises(KrikriJinja::TemplateError) { engine.render_string("{{ missing | length }}") }
+    end
     it "renders empty when a conditional has no else" do
       KrikriJinja.render("{{ 'a' if missing }}|").should eq("|")
     end

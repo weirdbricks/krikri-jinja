@@ -84,7 +84,9 @@ module KrikriJinja
             when Array then raw
             when GeneratorValue then raw.materialize
             when TupleValue then raw.items
-            when Undefined then [] of AnyValue
+            when Undefined
+              raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+              [] of AnyValue
             when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
             when BigIntValue then raise TemplateError.new("'int' object is not iterable", 0)
             when Hash then raw.keys.map { |k| AnyValue.new(k) }
@@ -121,7 +123,9 @@ module KrikriJinja
   register_filter("reverse") do |v, _a, _k, _c|
     case raw = v.raw
     when String then AnyValue.new(raw.reverse)
-    when Undefined then AnyValue.new(GeneratorValue.new([] of AnyValue))
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      AnyValue.new(GeneratorValue.new([] of AnyValue))
     else
       AnyValue.new(GeneratorValue.new(to_iterable(v).reverse))
     end
@@ -575,6 +579,9 @@ module KrikriJinja
   register_filter("attr") do |v, args, _k, _c|
     name = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("attr requires a name", 0)
     if v.raw.is_a?(Hash) || v.raw.is_a?(Undefined)
+      if raw = v.raw
+        raise TemplateError.new("'missing' is undefined", 0) if raw.is_a?(Undefined) && raw.strict?
+      end
       AnyValue.new(Undefined.new)
     else
       get_attr(v, name) || AnyValue.new(Undefined.new)
@@ -842,7 +849,9 @@ module KrikriJinja
     when Hash   then raw.size.to_i64
     when TupleValue then raw.items.size.to_i64
     when Markup then raw.value.size.to_i64
-    when Undefined then 0i64
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      0i64
     else raise TemplateError.new("object of type #{raw.class} has no length", 0)
     end
   end
@@ -856,7 +865,9 @@ module KrikriJinja
     when Markup then raw.value.chars.map { |c| AnyValue.new(c.to_s) }
     when TupleValue then raw.items
     when Hash then raw.keys.map { |k| AnyValue.new(k) }
-    when Undefined then [] of AnyValue
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0) if raw.strict?
+      [] of AnyValue
     else raise TemplateError.new("#{raw.class} object is not iterable", 0)
     end
   end
