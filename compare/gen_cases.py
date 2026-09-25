@@ -1709,6 +1709,117 @@ add("long attribute chain method", "{{ 'ab'.upper().lower().upper() }}")
 add("filter with expression arg", "{{ 'abc' | replace('a', 'b' | upper) }}")
 add("nested dict literal key expr", "{{ {('a' | upper): 1} }}")
 
+
+# ================= edge-case expansion (round 11) =================
+
+# --- filters: untouched option combos ---------------------------------------
+add("truncate all defaults", "{{ 'abcdefghij' | truncate }}")
+add("truncate killwords only", "{{ 'abcdefgh' | truncate(5, true) }}")
+add("wordwrap break true pos", "{{ 'aaaa bb' | wordwrap(3, true) }}")
+add("indent first kwarg", "{{ 'a\\nb' | indent(first=true) }}|")
+add("indent blank kwarg", "{{ 'a\\n\\nb' | indent(2, blank=true) }}|")
+add("trim chars kwarg", "{{ 'xxaxx' | trim(chars='x') }}")
+add("replace kwargs", "{{ 'aaa' | replace(old='a', new='b') }}")
+add("int base kwarg", "{{ '10' | int(base=2) }}")
+add("round method kwarg", "{{ 2.5 | round(method='ceil') }} {{ 2.5 | round(method='floor') }}")
+add("filesizeformat binary kwarg", "{{ 1024 | filesizeformat(binary=true) }}")
+add("dictsort by kwarg", "{{ {'a': 2, 'b': 1} | dictsort(by='value') | map('first') | join(',') }}")
+add("unique attr kwarg", "{{ users | unique(attribute='g') | length }}", {"users": [{"g": 1}, {"g": 1}]})
+add("sum start kwarg", "{{ [1] | sum(start='x') }}")
+add("join d kwarg", "{{ [1,2] | join(d='-') }}")
+add("default boolean kwarg", "{{ false | default('d', boolean=true) }}")
+add("tojson indent kwarg", "{{ [1] | tojson(indent=1) }}")
+add("sort attribute kwarg", "{{ users | sort(attribute='n') | map(attribute='n') | join(',') }}", {"users": [{"n": "b"}, {"n": "a"}]})
+add("min case_sensitive kwarg", "{{ ['B', 'a'] | min }} {{ ['B', 'a'] | max }}")
+
+# --- string methods: option combos --------------------------------------------
+add("str count end clip", "{{ 'ababab'.count('ab', 2, 5) }}")
+add("str rfind end clip", "{{ 'ababab'.rfind('ba', 0, 4) }}")
+add("str find whole range", "{{ 'abc'.find('c', 0, 3) }}")
+add("str rjust exact", "{{ 'abc'.rjust(3, '0') }}|")
+add("str ljust fill multi", "{{ 'a'.ljust(4, 'xy') }}")
+add("str center fill multi", "{{ 'a'.center(4, 'xy') }}")
+add("str zfill large", "{{ '1'.zfill(10) }}")
+add("str split max neg", "{{ 'a,b,c'.split(',', -1) | join('|') }}")
+add("str rsplit max neg", "{{ 'a,b,c'.rsplit(',', -1) | join('|') }}")
+add("str strip mixed args", "{{ 'aaXbb'.strip('ab') }}")
+add("str removesuffix all", "{{ 'xx'.removesuffix('xx') }}|")
+add("str replace same str", "{{ 'aa'.replace('aa', 'b') }}")
+
+# --- comparisons and logic deep ---------------------------------------------------
+add("and returns right value", "{{ 5 and 'x' }} {{ none and 'x' }}")
+add("or returns first truthy", "{{ 'a' or 'b' }} {{ '' or 'b' }} {{ 0 or 1 }}")
+add("not chain values", "{{ not 0 }} {{ not [] }} {{ not 'a' }}")
+add("compare tuple list error", "{{ (1,) < [1] }}")
+add("eq dict order irrelevant", "{{ {'a': 1, 'b': 2} == {'b': 2, 'a': 1} }}")
+add("eq nested containers", "{{ {'a': [1, {'b': 2}]} == {'a': [1, {'b': 2}]} }}")
+add("eq markup string", "{{ ('x' | safe) == 'x' }}", autoescape=False)
+
+# --- loop edge: round 4 -------------------------------------------------------------
+add("loop over dict items order", "{% for k in {'b': 1, 'a': 2} %}{{ k }}{% endfor %}")
+add("for with recursive flag no use", "{% for i in [1,2] recursive %}{{ i }}{% endfor %}")
+add("loop.length constant", "{% for i in [1,2,3] %}{{ loop.length }}-{% endfor %}")
+add("nested recursive depth", "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
+    {"data": [{"c": [{"c": [{"c": []}]}]}]})
+add("loop cycle two same", "{% for i in [1,2,3] %}{{ loop.cycle('x', 'x') }}{% endfor %}")
+add("for unpack deeper error", "{% for (a, b), c in [[(1, 2), 3, 4]] %}{{ a }}{% endfor %}")
+add("loop previtem in filtered", "{% for x in [1,2,3] if x != 2 %}{{ loop.previtem | default('-') }}{% endfor %}")
+add("loop last with filter", "{% for x in [1,2,3] if x != 1 %}{{ loop.last }}{% endfor %}")
+
+# --- inheritance: round 6 ------------------------------------------------------------
+add("extends var in grandparent", "{% extends 'mid.html' %}{% block b %}{{ v | default('d') }}{% endblock %}", templates={
+    "base.html": "{% set v = 'BV' %}{% block b %}{% endblock %}",
+    "mid.html": "{% extends 'base.html' %}"})
+add("include inside macro", "{% macro m() %}{% include 'p.html' %}{% endmacro %}{{ m() }}", templates={
+    "p.html": "P"})
+add("import with context macro", "{% set g = 'G' %}{% import 'm.html' as m with context %}{{ m.h() }}", templates={
+    "m.html": "{% macro h() %}{{ g | default('none') }}{% endmacro %}"})
+add("block in loop child override", "{% extends 'base.html' %}{% block b %}C{% endblock %}", templates={
+    "base.html": "{% for i in [1,2] %}{% block b %}D{% endblock %}{% endfor %}"})
+add("from import same name twice", "{% from 'm.html' import v, v %}{{ v }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("three includes", "{% include 'a.html' %}{% include 'b.html' %}{% include 'c.html' %}", templates={
+    "a.html": "A", "b.html": "B", "c.html": "C"})
+
+# --- whitespace: round 7 ----------------------------------------------------------------
+add("marker on import", "x\n  {%- import 'm.html' as m %}{{ m.v }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+add("lstrip only whitespace line", "x\n   \n{% if true %}y{% endif %}", lstrip_blocks=True)
+add("trim with comment only line", "a\n{# x #}\n{# y #}\nb", trim_blocks=True)
+add("marker on for else", "{% for x in [] %}x{% else -%}e{% endfor %}")
+add("var markers no spaces", "{{- 'a' -}}")
+
+# --- numbers: round 7 --------------------------------------------------------------------
+add("pow negative base frac exp", "{{ (-8) ** (1/3) != 0 }}")
+add("float int floor div", "{{ 7.5 // 2 }} {{ -7.5 // 2 }}")
+add("mod float negative div", "{{ -7.5 % -2 }}")
+add("compare bool strings", "{{ true < 'a' }}")
+add("arithmetic chain parens", "{{ ((1 + 2) * (3 + 4)) / 7 }}")
+add("unary nested minus", "{{ -(-(-1)) }}")
+add("big add negative", "{{ -9223372036854775807 - 2 }}")
+add("big mul three", "{{ 9223372036854775807 * 3 }}")
+
+# --- undefined / errors: round 3 ------------------------------------------------------------
+add("undefined nested loop both", "{% for a in [missing] %}{% for b in missing %}x{% endfor %}{{ a | default('d') }}{% endfor %}")
+add("undefined arithmetic div", "{{ missing / 2 }}")
+add("undefined floor div", "{{ missing // 2 }}")
+add("undefined mod", "{{ missing % 2 }}")
+add("undefined pow", "{{ missing ** 2 }}")
+add("undefined unary minus", "{{ -missing }}")
+add("undefined getitem call", "{{ missing['k'](1) }}")
+add("int undefined compare", "{{ missing == 0 }} {{ missing < 1 }}")
+add("none vs undefined in dict key", "{{ {none: 'a'}[none] }} {{ {missing: 'a'}[missing] }}")
+
+# --- misc: round 6 -----------------------------------------------------------------------------
+add("set markup upper autoescape", "{% set x %}<b>{% endset %}{{ x | upper }}", autoescape=True)
+add("filter chain on tuple", "{{ (1, 2) | reverse | first }}")
+add("method on filter result list", "{{ [3,1] | sort | first }}")
+add("expression dict key with filter", "{{ d[(1 | string)] }}", {"d": {"1": "v"}})
+add("nested ternary in arg", "{{ [1,2] | join('a' if true else 'b') }}")
+add("deep method chain string", "{{ 'a b'.split()[0].upper() }}")
+add("test arg with parens", "{{ 4 is divisibleby (2) }}")
+add("multiline expression in var", "{{\n 1 +\n 2\n}}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
