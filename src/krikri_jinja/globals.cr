@@ -108,6 +108,17 @@ module KrikriJinja
     AnyValue.new(result)
   end)
 
+  BUILTIN_GLOBALS["random"] = AnyValue.new(SimpleCallable.new("random") do |args, kwargs, ctx|
+    sequence = args[0]?.try(&.raw)
+    is_sequence = sequence.is_a?(Array) || sequence.is_a?(String) || sequence.is_a?(Hash) ||
+      sequence.is_a?(TupleValue) || sequence.is_a?(GeneratorValue)
+    if args.size == 1 && is_sequence
+      random_sequence(args[0], kwargs, ctx)
+    else
+      random_integer(args, kwargs)
+    end
+  end)
+
   BUILTIN_GLOBALS["dict"] = AnyValue.new(SimpleCallable.new("dict") do |args, kwargs, _ctx|
     h = {} of String => AnyValue
     args.each do |arg|

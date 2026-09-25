@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.0)
+## Status (v0.4.1)
 
 Implemented:
 
@@ -33,7 +33,8 @@ Implemented:
   `last`, `length`, `previtem`, `nextitem`, `depth`, `depth0`
 - 54 built-in filters (upper, lower, sort, map, select, groupby, batch,
   slice, join, default, tojson, ...) and 39 built-in tests
-- Globals: `range`, `dict`, `namespace`, `cycler`, `joiner`, `lipsum`
+- Globals: `range`, `dict`, `namespace`, `cycler`, `joiner`, `lipsum`,
+  `random`
 - Template inheritance (multi-level `extends` + block override), includes,
   imports; `DictLoader` / `FileSystemLoader`
 - Python-style semantics: truthiness, `True == 1`, floor division/modulo
@@ -56,8 +57,10 @@ Additional compatibility features:
 - `{% include ['a.html', 'b.html'] %}` fallback lists
 - `not` binds looser than comparisons (`not x in y` == `not (x in y)`)
 - Hex/octal/binary integer literals
-- Filters: `dictsort`, `filesizeformat`, `forceescape`, `center`, `random`,
-  `pprint`, `urlize`, `int(base=)`, `unique(attribute=)`, `format` with full
+- Filters: `dictsort`, `filesizeformat`, `forceescape`, `center`, `random`
+  (sequence choice plus Ansible-compatible `random(n)`, `random(start, stop)`,
+  `random(start, stop, step)` ranges and deterministic `seed=`), `pprint`,
+  `urlize`, `int(base=)`, `unique(attribute=)`, `format` with full
   %-conversion support, `Markup`-aware `safe`/`escape` under autoescape
 - Tests: `escaped`, `filter`, `test`, `sameas`
 - `Engine#render(name)` for loader-based rendering, engine-level

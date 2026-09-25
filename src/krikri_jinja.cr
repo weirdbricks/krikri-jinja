@@ -1,5 +1,6 @@
 require "./krikri_jinja/lexer"
 require "./krikri_jinja/bigmath"
+require "./krikri_jinja/python_random"
 require "./krikri_jinja/nodes"
 require "./krikri_jinja/parser"
 require "./krikri_jinja/context"
@@ -10,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.0"
+  VERSION = "0.4.1"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String

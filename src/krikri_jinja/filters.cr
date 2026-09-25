@@ -755,9 +755,95 @@ module KrikriJinja
     AnyValue.new(Markup.new(rendered))
   end
 
-  register_filter("random") do |v, _a, _k, c|
-    items = to_iterable(v)
-    items.empty? ? AnyValue.new(c.undefined) : items[Random.new.rand(items.size)]
+  private def self.random_seed(kwargs)
+    seed = kwargs["seed"]?.try(&.raw)
+    unless seed.nil? || seed.is_a?(Int64) || seed.is_a?(Bool)
+      raise TemplateError.new("random seed must be an integer", 0, kind: ErrorKind::Type)
+    end
+    return nil unless seed
+    seed.is_a?(Bool) ? (seed.as(Bool) ? 1_i64 : 0_i64) : seed.as(Int64)
+  end
+
+  private def self.random_index(seed : Int64?, count : UInt64) : UInt64
+    seed ? PythonRandom.new(seed).rand(count) : Random.new.rand(count)
+  end
+
+  private def self.random_integer(values : Array(AnyValue), kwargs)
+    unless values.size.in?(1..3)
+      raise TemplateError.new("random expects 1-3 range arguments", 0, kind: ErrorKind::Type)
+    end
+    if unknown = kwargs.keys.find { |key| !%w(seed start step).includes?(key) }
+      raise TemplateError.new("random got an unexpected keyword argument '#{unknown}'", 0, kind: ErrorKind::Type)
+    end
+    if values.size >= 2 && kwargs.has_key?("start")
+      raise TemplateError.new("random got multiple values for argument 'start'", 0, kind: ErrorKind::Type)
+    end
+    if values.size == 3 && kwargs.has_key?("step")
+      raise TemplateError.new("random got multiple values for argument 'step'", 0, kind: ErrorKind::Type)
+    end
+    values += [kwargs["start"]] if kwargs["start"]?
+    values += [kwargs["step"]] if kwargs["step"]?
+
+    numbers = [] of Int64
+    values.each do |value|
+      case raw = value.raw
+      when Int64 then numbers << raw
+      when Bool then numbers << (raw ? 1i64 : 0i64)
+      else
+        raise TemplateError.new("'#{raw.class}' object cannot be interpreted as an integer", 0, kind: ErrorKind::Type)
+      end
+    end
+
+    start, stop, step = case numbers.size
+                        when 1 then {0i64, numbers[0], 1i64}
+                        when 2 then {numbers[0], numbers[1], 1i64}
+                        else {numbers[0], numbers[1], numbers[2]}
+                        end
+    step = 1i64 if step == 0
+    valid_range = step > 0 ? stop > start : stop < start
+    raise TemplateError.new("random range is empty", 0, kind: ErrorKind::Type) unless valid_range
+
+    start128 = start.to_i128
+    step128 = step.to_i128
+    distance = stop.to_i128 - start128
+    count = (distance.abs + step128.abs - 1) // step128.abs
+    index = random_index(random_seed(kwargs), count.to_u64)
+    AnyValue.new((start128 + index.to_i128 * step128).to_i64)
+  end
+
+  private def self.random_sequence(sequence : AnyValue, kwargs, ctx)
+    if unknown = kwargs.keys.find { |key| key != "seed" }
+      raise TemplateError.new("random got an unexpected keyword argument '#{unknown}'", 0, kind: ErrorKind::Type)
+    end
+
+    items = to_iterable(sequence)
+    return AnyValue.new(ctx.undefined) if items.empty?
+    items[random_index(random_seed(kwargs), items.size.to_u64)]
+  end
+
+  register_filter("random") do |v, args, kwargs, c|
+    case raw = v.raw
+    when Int64, Bool
+      integer_kwargs = kwargs.dup
+      values = if args.empty?
+                 if start = integer_kwargs["start"]?
+                   integer_kwargs.delete("start")
+                   [start, v]
+                 else
+                   [v]
+                 end
+               else
+                 [args[0], v] + args[1..]
+               end
+      random_integer(values, integer_kwargs)
+    when Nil, Undefined
+      random_integer(args, kwargs)
+    else
+      unless args.empty?
+        raise TemplateError.new("random sequence selection does not accept range arguments", 0, kind: ErrorKind::Type)
+      end
+      random_sequence(v, kwargs, c)
+    end
   end
 
   # Filters that accept keyword arguments in real Jinja2; map/filter passing
@@ -765,7 +851,7 @@ module KrikriJinja
   KWARG_FILTERS = %w(default dictsort filesizeformat float indent int join map
                      max min reject rejectattr replace round select selectattr
                      slice sort sum tojson trim truncate unique urlencode
-                     wordwrap groupby batch urlize wordcount format)
+                     wordwrap groupby batch urlize wordcount format random)
 
   # Strict positional arity for filters python raises on when over-called.
   MAX_POSITIONAL = {"center" => 1, "trim" => 1, "indent" => 2, "round" => 2,
