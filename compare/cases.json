@@ -10565,5 +10565,282 @@
   "env": {
    "autoescape": false
   }
+ },
+ {
+  "name": "groupby case keys",
+  "template": "{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+  "data": {
+   "items": [
+    {
+     "k": "A"
+    },
+    {
+     "k": "a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "sort numeric attr stable",
+  "template": "{{ users | sort(attribute='v') | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a",
+     "v": 1
+    },
+    {
+     "n": "b",
+     "v": 1
+    },
+    {
+     "n": "c",
+     "v": 0
+    }
+   ]
+  }
+ },
+ {
+  "name": "unique attr numeric",
+  "template": "{{ [(1,), (1,)] | unique(attribute='0') | length }}",
+  "data": {}
+ },
+ {
+  "name": "batch uneven with fill",
+  "template": "{% for r in [1,2,3,4,5] | batch(2, 0) %}[{{ r | join(',') }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "slice uneven fill",
+  "template": "{% for c in [1,2,3,4,5] | slice(2, '-') %}[{{ c | join(',') }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "sum start string",
+  "template": "{{ ['a'] | sum(start='x') }}",
+  "data": {}
+ },
+ {
+  "name": "truncate unicode width",
+  "template": "{{ 'h\u00e9llo' | truncate(4, true, '\u2026', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "indent none first",
+  "template": "{{ 'a\\nb' | indent(2, none) }}|",
+  "data": {}
+ },
+ {
+  "name": "undefined concat rev",
+  "template": "{{ missing ~ 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined contains",
+  "template": "{{ 'a' in missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined in tuple",
+  "template": "{{ missing in (1,) }}",
+  "data": {}
+ },
+ {
+  "name": "undefined tojson nested",
+  "template": "{{ [missing] | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "undefined first",
+  "template": "{{ missing | first | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined reverse",
+  "template": "{{ missing | reverse | first | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "loop over range with vars",
+  "template": "{% for i in range(n) %}{{ i }}{% endfor %}",
+  "data": {
+   "n": 3
+  }
+ },
+ {
+  "name": "recursive loop via method call",
+  "template": "{% for i in d.list recursive %}{{ i }}{{ loop(d.list) if false }}{% endfor %}",
+  "data": {
+   "d": {
+    "list": [
+     1
+    ]
+   }
+  }
+ },
+ {
+  "name": "for unpack tuple literal",
+  "template": "{% for a, b in ((1, 2),) %}{{ a }}{{ b }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "nested loop cycle reset",
+  "template": "{% for a in [1,2] %}{% for b in [1] %}{{ loop.cycle('x') }}{% endfor %}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.length on filtered",
+  "template": "{% for x in [1,2,3] if x != 2 %}{{ loop.length }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro shadow builtin filter",
+  "template": "{% macro upper(x) %}M{{ x }}{% endmacro %}{{ upper('a') }} {{ 'a' | upper }}",
+  "data": {}
+ },
+ {
+  "name": "macro with loop body",
+  "template": "{% macro m(items) %}{% for i in items %}{{ i }}{% endfor %}{% endmacro %}{{ m([1,2]) }}",
+  "data": {}
+ },
+ {
+  "name": "macro call nested parens",
+  "template": "{% macro m() %}x{% endmacro %}{{ (m()) }}",
+  "data": {}
+ },
+ {
+  "name": "macro recursion guard",
+  "template": "{% macro m(n) %}{{ m(n) if false }}{{ n }}{% endmacro %}{{ m(1) }}",
+  "data": {}
+ },
+ {
+  "name": "block in child inside if",
+  "template": "{% extends 'base.html' %}{% if true %}{% block b %}C{% endblock %}{% endif %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "include with ignore missing list",
+  "template": "{% include ['x.html', 'y.html'] ignore missing %}ok",
+  "data": {},
+  "templates": {
+   "y.html": "Y"
+  }
+ },
+ {
+  "name": "import macro with default",
+  "template": "{% from 'm.html' import g %}{{ g() }}",
+  "data": {},
+  "templates": {
+   "m.html": "{% macro g(n='d') %}{{ n }}{% endmacro %}"
+  }
+ },
+ {
+  "name": "marker on nested endif",
+  "template": "{% if true %}{% if true %}x\n{%- endif %}{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "lstrip marker comment line",
+  "template": "x\n  {# c #}\ny",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "trim plus marker combo",
+  "template": "a\n{%+ if true %}\nb\n{% endif %}",
+  "data": {},
+  "env": {
+   "trim_blocks": true,
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "float repr small",
+  "template": "{{ 1e-4 }} {{ 1e-5 }}",
+  "data": {}
+ },
+ {
+  "name": "int pow chain",
+  "template": "{{ 2 ** 3 ** 2 ** 1 }}",
+  "data": {}
+ },
+ {
+  "name": "neg floor div float",
+  "template": "{{ -3.5 // 1 }}",
+  "data": {}
+ },
+ {
+  "name": "big int mod",
+  "template": "{{ 9223372036854775807 % 1000 }}",
+  "data": {}
+ },
+ {
+  "name": "sum mixed bools floats",
+  "template": "{{ [true, false, 0.5] | sum }}",
+  "data": {}
+ },
+ {
+  "name": "escape in set block autoescape",
+  "template": "{% set x %}<b>{% endset %}{{ x | trim }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "markup safe in if",
+  "template": "{% if ('<x>' | safe) %}y{% endif %}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "dict value tuple repr",
+  "template": "{{ {'t': (1, 2)} }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "long filter chain",
+  "template": "{{ '  ab  ' | trim | upper | reverse | lower | trim }}",
+  "data": {}
+ },
+ {
+  "name": "filter on dict keys",
+  "template": "{{ {'b': 1, 'a': 2}.keys() | list | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "nested tuple repr deep",
+  "template": "{{ ((1,), (2,)) }}",
+  "data": {}
+ },
+ {
+  "name": "method on filtered string",
+  "template": "{{ 'a b'.split()[0] | upper }}",
+  "data": {}
+ },
+ {
+  "name": "bool in tuple repr",
+  "template": "{{ (true, false) }}",
+  "data": {}
+ },
+ {
+  "name": "chained getitem on tuple",
+  "template": "{{ ((1, 2), (3, 4))[0][1] }}",
+  "data": {}
+ },
+ {
+  "name": "tojson with slash key",
+  "template": "{{ {'a/b': 1} | tojson }}",
+  "data": {}
  }
 ]
