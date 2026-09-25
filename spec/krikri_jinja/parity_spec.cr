@@ -620,6 +620,18 @@ y")
       KrikriJinja.render("{{ (1).bit_length() }} {{ (256).bit_length() }}").should eq("1 9")
     end
   end
+
+  describe "parity: round 15" do
+    it "treats dotted filter names as one unknown filter" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1,2] | first.to_s }}")
+      end
+    end
+
+    it "trims the newline after endraw with trim_blocks" do
+      render_env("a\n{% raw %}\nb\n{% endraw %}\nc", trim_blocks: true).should eq("a\n\nb\nc")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
