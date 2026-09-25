@@ -208,7 +208,8 @@ module KrikriJinja
     y = b.raw
     if x.is_a?(Undefined) || y.is_a?(Undefined)
       if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
-        raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined)
+        offending = x.is_a?(Undefined) ? x.as(Undefined) : y.as(Undefined)
+        raise TemplateError.new(KrikriJinja.undefined_message(offending), 0, kind: ErrorKind::Undefined)
       end
       return x.is_a?(Undefined) && y.is_a?(Undefined)
     end
@@ -280,7 +281,8 @@ module KrikriJinja
     x = a.raw
     y = b.raw
     if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined)
+      offending = x.is_a?(Undefined) ? x.as(Undefined) : y.as(Undefined)
+      raise TemplateError.new(KrikriJinja.undefined_message(offending), 0, kind: ErrorKind::Undefined)
     end
     if x.is_a?(BigIntValue) && y.is_a?(BigIntValue)
       big_string_cmp(x.value, y.value)
@@ -371,7 +373,7 @@ module KrikriJinja
     when Hash
       c.has_key?(dict_key(item))
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if c.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(c), 0, kind: ErrorKind::Undefined) if c.strict?
       false
     else
       raise TemplateError.new("argument of type #{c.class} is not iterable", 0)
