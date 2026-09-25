@@ -98,7 +98,77 @@ def self.big_mul(a : String, b : String) : String
     end
   end
   s = s.lstrip('0')
-  s = "1" if s.empty?
+  s = "0" if s.empty?
   neg ? "-#{s}" : s
+end
+
+def self.norm_decimal(s : String) : AnyV
+  BigIntValue.parse(s)
+end
+
+def self.big_usub(a : String, b : String) : String
+  diff = [] of Int32
+  i = a.size - 1
+  j = b.size - 1
+  borrow = 0
+  while i >= 0
+    t = a[i].to_i - borrow
+    t -= b[j].to_i if j >= 0
+    if t < 0
+      t += 10
+      borrow = 1
+    else
+      borrow = 0
+    end
+    diff << t
+    i -= 1
+    j -= 1
+  end
+  mag = diff.reverse.join.sub(/\A0+(?=\d)/, "")
+  mag.empty? ? "0" : mag
+end
+
+# Unsigned long division of decimal strings; a and b must be non-negative.
+def self.big_udivmod(da : String, db : String) : Tuple(String, String)
+  q = ""
+  rem = "0"
+  da.each_char do |c|
+    rem = rem == "0" ? c.to_s : "#{rem}#{c}"
+    digit = 0
+    while big_cmp(rem, db) >= 0
+      rem = big_usub(rem, db)
+      digit += 1
+    end
+    q += digit.to_s
+  end
+  q = q.lstrip('0')
+  q = "0" if q.empty?
+  {q, rem}
+end
+
+# Truncating quotient/remainder with Python's floor adjustment.
+def self.big_divmod(a : String, b : String) : Tuple(String, String)
+  na = a.starts_with?('-')
+  nb = b.starts_with?('-')
+  q0, r0 = big_udivmod(a.lstrip('-'), b.lstrip('-'))
+  tq = (na ^ nb) && q0 != "0" ? "-#{q0}" : q0
+  tr = na && r0 != "0" ? "-#{r0}" : r0
+  if r0 != "0" && (na ^ nb)
+    tq = big_add(tq, "-1")
+    tr = big_add(tr, b)
+  end
+  {tq, tr}
+end
+
+def self.big_pow_str(base : String, exp : Int64) : String
+  r = "1"
+  b = base
+  e = exp
+  while e > 0
+    r = big_mul(r, b) if e & 1 == 1
+    b = big_mul(b, b)
+    e >>= 1
+  end
+  r
 end
 end

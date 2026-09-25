@@ -6,10 +6,13 @@ module KrikriJinja
     when Nil then false
     when Bool then v
     when Int64 then v != 0
+    when BigIntValue then !v.zero?
     when Float64 then v != 0.0
     when String then !v.empty?
     when Array then !v.empty?
     when Hash then !v.empty?
+    when TupleValue then !v.items.empty?
+    when Markup then !v.value.empty?
     else true
     end
   end
@@ -25,6 +28,9 @@ module KrikriJinja
         when Nil        then "None"
         when Bool       then v ? "True" : "False"
         when Int64      then v.to_s
+        when BigIntValue
+          check_int_str_limit(v.value)
+          v.value
         when Float64    then format_float(v)
         when String     then v
         when Array      then "[" + v.map { |x| stringify_repr(x) }.join(", ") + "]"
@@ -43,12 +49,49 @@ module KrikriJinja
     escape ? escape_html(s) : s
   end
 
+  # Int64-overflowing decimal strings are the engine's big-int
+  # representation; Python reprs them unquoted.
+  def self.big_int_string?(s : String) : Bool
+    s.matches?(/^-?\d+$/) && s.to_i64?.nil?
+  end
+
+  # CPython 3.11+ refuses int->str beyond 4300 digits.
+  def self.check_int_str_limit(s : String)
+    raise TemplateError.new("Exceeds the limit (4300 digits) for integer string conversion", 0) if s.size > 4300
+  end
+
+  # CPython str repr: single quotes preferred, double when the value
+  # contains ' but not ", backslash/quote/control chars escaped.
+  def self.py_repr_string(s : String) : String
+    quote = s.includes?('\'') && !s.includes?('"') ? '"' : '\''
+    String.build do |io|
+      io << quote
+      s.each_char do |c|
+        case c
+        when '\\'      then io << "\\\\"
+        when '\n'      then io << "\\n"
+        when '\r'      then io << "\\r"
+        when '\t'      then io << "\\t"
+        when quote     then io << "\\#{quote}"
+        when '\u007f'  then io << "\\x7f"
+        else
+          if c.ord < 0x20
+            io << "\\x#{c.ord.to_s(16).rjust(2, '0')}"
+          else
+            io << c
+          end
+        end
+      end
+      io << quote
+    end
+  end
+
   # repr-style for lists/dicts inside stringification.
   def self.stringify_repr(value : AnyValue) : String
     case v = value.raw
-    when String then "'#{v}'"
+    when String then py_repr_string(v)
     when Undefined then "Undefined"
-    when Markup then "Markup('#{v.value}')"
+    when Markup then "Markup(#{py_repr_string(v.value)})"
     else stringify(value)
     end
   end
@@ -60,11 +103,16 @@ module KrikriJinja
   def self.dict_key(v : AnyValue) : String
     case k = v.raw
     when String then k
+    when BigIntValue then "#{KEY_MARKER}i:#{k.value}"
     when Bool   then "#{KEY_MARKER}b:#{k ? "true" : "false"}"
     when Int64  then "#{KEY_MARKER}i:#{k}"
     when Float64
       # python: 1.0 == 1 and hashes equal, so canonicalize integral floats
-      k == k.trunc ? "#{KEY_MARKER}i:#{k.trunc.to_i64}" : "#{KEY_MARKER}f:#{format_float(k)}"
+      if k == k.trunc && k.abs <= 9223372036854775807.0
+        "#{KEY_MARKER}i:#{k.trunc.to_i64}"
+      else
+        "#{KEY_MARKER}f:#{format_float(k)}"
+      end
     when Nil    then "#{KEY_MARKER}n"
     when Undefined then "#{KEY_MARKER}u"
     when TupleValue
@@ -78,6 +126,7 @@ module KrikriJinja
     case k = v.raw
     when Bool   then "#{KEY_MARKER}i:#{k ? 1 : 0}"
     when Int64  then (k == 1 || k == 0) ? "#{KEY_MARKER}b:#{k == 1}" : nil
+    when BigIntValue then (k.value == "1" || k.zero?) ? "#{KEY_MARKER}b:#{k.value == "1"}" : nil
     else nil
     end
   end
@@ -88,7 +137,7 @@ module KrikriJinja
     kind, _, val = body.partition(":")
     case kind
     when "b" then AnyValue.new(val == "true")
-    when "i" then AnyValue.new(val.to_i64)
+    when "i" then AnyValue.new(BigIntValue.parse(val))
     when "f" then AnyValue.new(val.to_f64)
     when "n" then AnyValue.new(nil)
     when "u" then AnyValue.new(Undefined.new)
@@ -100,8 +149,9 @@ module KrikriJinja
   end
 
   def self.dict_key_repr(k : String) : String
-    case v = decode_key(k).raw
-    when String then "'#{v}'"
+    v = decode_key(k).raw
+    case v
+    when String then py_repr_string(v)
     else stringify(AnyValue.new(v))
     end
   end
@@ -145,6 +195,20 @@ module KrikriJinja
     end
     if x.is_a?(Nil) && y.is_a?(Nil)
       true
+    elsif x.is_a?(BigIntValue) && y.is_a?(BigIntValue)
+      x.value == y.value
+    elsif x.is_a?(BigIntValue) && y.is_a?(Int64)
+      big_string_int_cmp(x.value, y) == 0
+    elsif x.is_a?(Int64) && y.is_a?(BigIntValue)
+      big_string_int_cmp(y.value, x) == 0
+    elsif x.is_a?(BigIntValue) && y.is_a?(Float64)
+      x.to_f64 == y
+    elsif x.is_a?(Float64) && y.is_a?(BigIntValue)
+      x == y.to_f64
+    elsif x.is_a?(BigIntValue) && y.is_a?(Bool)
+      (y ? 1 : 0) == 1 && x.value == "1" || !y && x.zero?
+    elsif x.is_a?(Bool) && y.is_a?(BigIntValue)
+      (x ? 1 : 0) == 1 && y.value == "1" || !x && y.zero?
     elsif x.is_a?(Bool) && y.is_a?(Bool)
       x == y
     elsif x.is_a?(Int64) && y.is_a?(Int64)
@@ -196,7 +260,21 @@ module KrikriJinja
   def self.compare_values(a : AnyValue, b : AnyValue) : Int32
     x = a.raw
     y = b.raw
-    if x.is_a?(Int64) && y.is_a?(Int64)
+    if x.is_a?(BigIntValue) && y.is_a?(BigIntValue)
+      big_string_cmp(x.value, y.value)
+    elsif x.is_a?(BigIntValue) && y.is_a?(Int64)
+      big_string_int_cmp(x.value, y)
+    elsif x.is_a?(Int64) && y.is_a?(BigIntValue)
+      -big_string_int_cmp(y.value, x)
+    elsif x.is_a?(BigIntValue) && y.is_a?(Float64)
+      (x.to_f64 <=> y) || 0
+    elsif x.is_a?(Float64) && y.is_a?(BigIntValue)
+      (x <=> y.to_f64) || 0
+    elsif x.is_a?(BigIntValue) && y.is_a?(Bool)
+      big_string_int_cmp(x.value, y ? 1i64 : 0i64)
+    elsif x.is_a?(Bool) && y.is_a?(BigIntValue)
+      -big_string_int_cmp(y.value, x ? 1i64 : 0i64)
+    elsif x.is_a?(Int64) && y.is_a?(Int64)
       (x <=> y) || 0
     elsif x.is_a?(Float64) && y.is_a?(Float64)
       (x <=> y) || 0
@@ -206,10 +284,10 @@ module KrikriJinja
       (x <=> y.to_f64) || 0
     elsif x.is_a?(String) && y.is_a?(String)
       (x <=> y) || 0
-    elsif x.is_a?(String) && x.matches?(/^-?\d+$/) && y.is_a?(Int64)
-      big_string_int_cmp(x, y)
-    elsif x.is_a?(Int64) && y.is_a?(String) && y.matches?(/^-?\d+$/)
-      -(big_string_int_cmp(y, x))
+    elsif x.is_a?(Markup) && y.is_a?(String)
+      (x.value <=> y) || 0
+    elsif x.is_a?(String) && y.is_a?(Markup)
+      (x <=> y.value) || 0
     elsif x.is_a?(Bool) && y.is_a?(Bool)
       (x ? 1 : 0) <=> (y ? 1 : 0)
     elsif (x.is_a?(Bool) && y.is_a?(Int64)) || (x.is_a?(Int64) && y.is_a?(Bool))
@@ -238,6 +316,14 @@ module KrikriJinja
       raise TemplateError.new("cannot compare #{x.class} and #{y.class}", 0)
     end
   end
+  def self.big_string_cmp(a : String, b : String) : Int32
+    aneg = a.starts_with?('-')
+    bneg = b.starts_with?('-')
+    return aneg ? -1 : 1 if aneg != bneg
+    cmp = big_cmp(a.lstrip('-'), b.lstrip('-'))
+    aneg ? -cmp : cmp
+  end
+
   # Exact comparison of a decimal-string integer against an Int64.
   def self.big_string_int_cmp(s : String, i : Int64) : Int32
     sneg = s.starts_with?('-')

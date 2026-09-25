@@ -32,8 +32,14 @@ module KrikriJinja
     percent_encode(s).gsub("%20", "+")
   end
 
-  def self.filesizeformat(bytes : Int64, base : Int64, prefixes : Array(String), binary : Bool) : String
-    return "0 Bytes" if bytes == 0
+  def self.filesizeformat(bytes : AnyV, base : Int64, prefixes : Array(String), binary : Bool) : String
+    byte_string = case value = bytes
+                  when Int64      then value.to_s
+                  when BigIntValue then value.value
+                  when String     then value
+                  else raise TemplateError.new("filesizeformat expects a number", 0)
+                  end
+    return "0 Bytes" if byte_string == "0"
     units = ["Bytes"] + prefixes
     i = 0
     value = bytes.to_f64
@@ -42,24 +48,44 @@ module KrikriJinja
       i += 1
     end
     if i == 0
-      bytes == 1 ? "1 Byte" : "#{bytes} Bytes"
+      byte_string == "1" ? "1 Byte" : "#{byte_string} Bytes"
     else
       "#{value.round(1)} #{units[i]}"
     end
   end
 
-  # Python %-style formatting (the `format` filter).
-  def self.py_format(fmt : String, args : Array(AnyValue)) : String
+  # Python %-style formatting (the `format` filter). `tuple_arg` marks a
+  # parenthesized right operand; CPython only errors on leftover args for
+  # tuples and scalars, never for lists/dicts/undefined.
+  def self.py_format(fmt : String, args : Array(AnyValue), tuple_arg : Bool = true) : String
     idx = 0
-    fmt.gsub(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/) do |m|
-      if m == "%%"
-        "%"
-      else
-        md = m.match(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/).not_nil!
+    conversions = 0
+    fmt.scan(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/) { |m| conversions += 1 unless m[4] == "%" }
+    fmt.scan(/%[-+ #0]*(?:\*|\d+)?(?:\.(?:\*|\d+))?([^%])/) do |m|
+      char = m[1]
+      unless "sdixXoeEfFgGr".includes?(char)
+        raise TemplateError.new("unsupported format character '#{char}'", 0)
+      end
+    end
+    if conversions == 0 && !tuple_arg && args.size == 1
+      a = args[0].raw
+      return fmt if a.is_a?(Array) || a.is_a?(Hash) || a.is_a?(Undefined) || a.is_a?(GeneratorValue)
+      raise TemplateError.new("not all arguments converted during string formatting", 0)
+    end
+    out = String.build do |io|
+      pos = 0
+      fmt.scan(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/) do |m|
+        io << fmt[pos...m.begin(0)]
+        pos = m.end(0)
+        md = m
         flags = md[1]? || ""
         width_spec = md[2]?
         prec_spec = md[3]?
         conv = md[4]?.try(&.[-1]) || "s"
+        if conv == '%'
+          io << "%"
+          next
+        end
         width : Int64? = nil
         prec : Int64? = nil
         if width_spec == "*"
@@ -76,39 +102,39 @@ module KrikriJinja
         elsif prec_spec
           prec = prec_spec.try(&.to_i?).try(&.to_i64)
         end
-        if conv == '%'
-          "%"
+        arg = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
+        idx += 1
+        cfmt = "%#{flags}#{width ? width.to_s : ""}#{prec ? ".#{prec}" : ""}#{conv}"
+        case conv
+        when 's'
+          body = stringify(arg)
+          io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
+        when 'r'
+          body = arg.raw.is_a?(String) ? py_repr_string(arg.raw.as(String)) : stringify(arg)
+          io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
+        when 'd', 'i', 'u'
+          n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) ||
+              (arg.raw.is_a?(Bool) ? (arg.raw ? 1i64 : 0i64) : nil) ||
+              raise TemplateError.new("%d format: a number is required", 0)
+          io << ::sprintf(cfmt, n)
+        when 'x', 'X', 'o'
+          n = arg.raw.as?(Int64) || raise TemplateError.new("an integer is required", 0)
+          io << ::sprintf(cfmt, n)
+        when 'e', 'E', 'f', 'F', 'g', 'G'
+          f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) ||
+              (arg.raw.is_a?(Bool) ? (arg.raw ? 1.0 : 0.0) : nil) ||
+              raise TemplateError.new("a float is required", 0)
+          io << ::sprintf(cfmt, f)
         else
-          arg = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
-          idx += 1
-          cfmt = "%#{flags}#{width ? width.to_s : ""}#{prec ? ".#{prec}" : ""}#{conv}"
-          case conv
-          when 's'
-            body = stringify(arg)
-            width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body
-          when 'r'
-            inner = stringify(arg)
-            body = arg.raw.is_a?(String) ? "'#{inner}'" : inner
-            width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body
-          when 'd', 'i', 'u'
-            n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) ||
-                (arg.raw.is_a?(Bool) ? (arg.raw ? 1i64 : 0i64) : nil) ||
-                raise TemplateError.new("%d format: a number is required", 0)
-            ::sprintf(cfmt, n)
-          when 'x', 'X', 'o'
-            n = arg.raw.as?(Int64) || raise TemplateError.new("an integer is required", 0)
-            ::sprintf(cfmt, n)
-          when 'e', 'E', 'f', 'F', 'g', 'G'
-            f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) ||
-                (arg.raw.is_a?(Bool) ? (arg.raw ? 1.0 : 0.0) : nil) ||
-                raise TemplateError.new("a float is required", 0)
-            ::sprintf(cfmt, f)
-          else
-            stringify(arg)
-          end
+          io << stringify(arg)
         end
       end
+      io << fmt[pos..]
     end
+    if idx < args.size
+      raise TemplateError.new("not all arguments converted during string formatting", 0)
+    end
+    out
   end
 
   # str.format: positional ({} and {N}) replacement with {{ }} escapes.

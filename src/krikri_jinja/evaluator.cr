@@ -321,6 +321,11 @@ module KrikriJinja
     end
   end
 
+  @[Link("m")]
+  lib PyLibM
+    fun fmod(x : Float64, y : Float64) : Float64
+  end
+
   class Evaluator
     @ctx : Context
     @engine : Engine
@@ -548,7 +553,7 @@ module KrikriJinja
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
                                 when Undefined then [] of AnyValue
-                                when GeneratorValue then raw.items
+                                when GeneratorValue then raw.materialize
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
                                 end
 
@@ -869,6 +874,22 @@ module KrikriJinja
       else
         left = eval(expr.left).raw
         right = eval(expr.right).raw
+        # python bools are ints in arithmetic
+        left = as_int(left) if left.is_a?(Bool)
+        right = as_int(right) if right.is_a?(Bool)
+        # String % value is %-formatting in python; big-int decimal strings
+        # are numeric and use numeric modulo instead; Markup formats too
+        fmt_left : String? = case left
+                            when Markup then left.as(Markup).value
+                            when String then left.as(String)
+                            else nil
+                            end
+        if expr.op == "%" && (f = fmt_left)
+          tuple_arg = right.is_a?(TupleValue)
+          fmt_args = tuple_arg ? right.as(TupleValue).items : [AnyValue.new(right)]
+          formatted = KrikriJinja.py_format(f, fmt_args, tuple_arg)
+          return AnyValue.new(left.is_a?(Markup) ? Markup.new(formatted) : formatted)
+        end
         result = case expr.op
                  when "+" then add(left, right)
                  when "-" then subtract(left, right)
@@ -891,6 +912,11 @@ module KrikriJinja
       end
     end
 
+    # Decimal string for int-valued operands: Int64s and BigIntValues.
+    private def big_dec_str(v : AnyV) : String?
+      v.as?(Int64).try(&.to_s) || v.as?(BigIntValue).try(&.value)
+    end
+
     private def add(a : AnyV, b : AnyV) : AnyV
       case {a, b}
       when {Float64, Float64} then a + b
@@ -900,18 +926,29 @@ module KrikriJinja
       when {String, Markup} then a + b.value
       when {Markup, Markup} then a.value + b.value
       when {String, String} then a + b
+      when {BigIntValue, Int64} then KrikriJinja.norm_decimal(KrikriJinja.big_add(a.value, b.to_s))
+      when {Int64, BigIntValue} then KrikriJinja.norm_decimal(KrikriJinja.big_add(a.to_s, b.value))
+      when {BigIntValue, BigIntValue} then KrikriJinja.norm_decimal(KrikriJinja.big_add(a.value, b.value))
+      when {BigIntValue, Float64} then a.to_f64 + b
+      when {Float64, BigIntValue} then a + b.to_f64
       when {Array, Array} then a + b
       else
         x = as_int(a)
         y = as_int(b)
         if x && y
           if (x > 0 && y > 0 && x > Int64::MAX - y) || (x < 0 && y < 0 && x < Int64::MIN - y)
-            KrikriJinja.big_add(x.to_s, y.to_s)
+            KrikriJinja.norm_decimal(KrikriJinja.big_add(x.to_s, y.to_s))
           else
             x + y
           end
         elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
           (x ? x.to_f64 : a.as(Float64)) + (y ? y.to_f64 : b.as(Float64))
+        elsif (s1 = big_dec_str(a)) && (s2 = big_dec_str(b))
+          KrikriJinja.norm_decimal(KrikriJinja.big_add(s1, s2))
+        elsif (s1 = big_dec_str(a)) && (b.is_a?(Float64) || y)
+          s1.to_f64 + (b.as?(Float64) || y.not_nil!.to_f64)
+        elsif (s2 = big_dec_str(b)) && (a.is_a?(Float64) || x)
+          s2.to_f64 + (a.as?(Float64) || x.not_nil!.to_f64)
         else
           raise TemplateError.new("unsupported operands for +: #{a.class} and #{b.class}", 0)
         end
@@ -926,29 +963,74 @@ module KrikriJinja
           x - y
         rescue OverflowError
           ny = y >= 0 ? -y : (y == Int64::MIN ? 9223372036854775808i128 : -y)
-          KrikriJinja.big_add(x.to_s, ny.to_s)
+          KrikriJinja.norm_decimal(KrikriJinja.big_add(x.to_s, ny.to_s))
         end
       elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
         (x ? x.to_f64 : a.as(Float64)) - (y ? y.to_f64 : b.as(Float64))
+      elsif (s1 = big_dec_str(a)) && (s2 = big_dec_str(b))
+        neg_s = s2.starts_with?('-') ? s2[1..] : "-#{s2}"
+        KrikriJinja.norm_decimal(KrikriJinja.big_add(s1, neg_s))
+      elsif (s1 = big_dec_str(a)) && (b.is_a?(Float64) || y)
+        s1.to_f64 - (b.as?(Float64) || y.not_nil!.to_f64)
+      elsif (s2 = big_dec_str(b)) && (a.is_a?(Float64) || x)
+        (a.as?(Float64) || x.not_nil!.to_f64) - s2.to_f64
       else
         raise TemplateError.new("unsupported operands for -: #{a.class} and #{b.class}", 0)
       end
     end
 
     private def multiply(a : AnyV, b : AnyV) : AnyV
+      # big-int decimal strings are numbers, not strings: check before the
+      # sequence-repeat cases so 9223372036854775808 * 2 multiplies
+      if (sa = a.as?(BigIntValue))
+        if (yb = as_int(b))
+          return KrikriJinja.norm_decimal(KrikriJinja.big_mul(sa.value, yb.to_s))
+        end
+        if (sb = b.as?(BigIntValue))
+          return KrikriJinja.norm_decimal(KrikriJinja.big_mul(sa.value, sb.value))
+        end
+        if (fb = b.as?(Float64))
+          return sa.to_f64 * fb
+        end
+      end
+      if (sb = b.as?(BigIntValue))
+        if (xa = as_int(a))
+          return KrikriJinja.norm_decimal(KrikriJinja.big_mul(xa.to_s, sb.value))
+        end
+        if (fa = a.as?(Float64))
+          return fa * sb.to_f64
+        end
+      end
       case {a, b}
-      when {String, Int64} then b <= 0 ? "" : a * b
-      when {Int64, String} then a <= 0 ? "" : b * a
+      when {String, Int64}
+        raise TemplateError.new("memory error", 0) if b > 0 && a.bytesize > 0 && b > (2_000_000_000 // a.bytesize)
+        b <= 0 ? "" : a * b
+      when {Int64, String}
+        raise TemplateError.new("memory error", 0) if a > 0 && b.bytesize > 0 && a > (2_000_000_000 // b.bytesize)
+        a <= 0 ? "" : b * a
       when {Markup, Int64} then b <= 0 ? "" : a.value * b
       when {Int64, Markup} then a <= 0 ? "" : b.value * a
       when {Array, Int64}
+        return [] of AnyValue if a.empty?
+        raise TemplateError.new("memory error", 0) if b > 0 && b > (50_000_000 // Math.max(1, a.size))
         out_arr = [] of AnyValue
         (b > 0 ? b : 0).times { out_arr.concat(a) }
         out_arr
       when {Int64, Array}
+        raise TemplateError.new("memory error", 0) if a > 0 && a > (50_000_000 // Math.max(1, b.size))
         out_arr = [] of AnyValue
         (a > 0 ? a : 0).times { out_arr.concat(b) }
         out_arr
+      when {TupleValue, Int64}
+        raise TemplateError.new("memory error", 0) if b > 0 && b > (50_000_000 // Math.max(1, a.items.size))
+        out_items = [] of AnyValue
+        (b > 0 ? b : 0).times { out_items.concat(a.items) }
+        TupleValue.new(out_items)
+      when {Int64, TupleValue}
+        raise TemplateError.new("memory error", 0) if a > 0 && a > (50_000_000 // Math.max(1, b.items.size))
+        out_items = [] of AnyValue
+        (a > 0 ? a : 0).times { out_items.concat(b.items) }
+        TupleValue.new(out_items)
       else
         x = as_int(a)
         y = as_int(b)
@@ -956,19 +1038,29 @@ module KrikriJinja
           begin
             x * y
           rescue OverflowError
-            KrikriJinja.big_mul(x.to_s, y.to_s)
+            KrikriJinja.norm_decimal(KrikriJinja.big_mul(x.to_s, y.to_s))
           end
-        elsif (x || a.is_a?(Float64)) && (y || b.is_a?(Float64))
-          (x ? x.to_f64 : a.as(Float64)) * (y ? y.to_f64 : b.as(Float64))
+        elsif a.is_a?(BigIntValue) && (y || b.is_a?(BigIntValue))
+          KrikriJinja.norm_decimal(KrikriJinja.big_mul(a.value, y ? y.to_s : b.as(BigIntValue).value))
+        elsif b.is_a?(BigIntValue) && x
+          KrikriJinja.norm_decimal(KrikriJinja.big_mul(x.to_s, b.value))
+        elsif (x || a.is_a?(Float64) || a.is_a?(BigIntValue)) &&
+              (y || b.is_a?(Float64) || b.is_a?(BigIntValue))
+          (x || (a.is_a?(Float64) ? a.as(Float64) : a.as(BigIntValue).to_f64)) *
+            (y || (b.is_a?(Float64) ? b.as(Float64) : b.as(BigIntValue).to_f64))
         else
           raise TemplateError.new("unsupported operands for *: #{a.class} and #{b.class}", 0)
         end
       end
     end
 
+    private def numish(v : AnyV) : Float64?
+      v.as?(Float64) || as_int(v).try(&.to_f64) || v.as?(BigIntValue).try(&.to_f64)
+    end
+
     private def divide(a : AnyV, b : AnyV) : AnyV
-      x = a.as?(Float64) || as_int(a).try(&.to_f64)
-      y = b.as?(Float64) || as_int(b).try(&.to_f64)
+      x = numish(a)
+      y = numish(b)
       raise TemplateError.new("unsupported operand for /", 0) unless x && y
       raise TemplateError.new("division by zero", 0) if y == 0.0
       x / y
@@ -978,11 +1070,19 @@ module KrikriJinja
       if (x = as_int(a)) && (y = as_int(b))
         raise TemplateError.new("integer division or modulo by zero", 0) if y == 0
         x // y
+      elsif (s1 = big_dec_str(a)) && (s2 = big_dec_str(b))
+        raise TemplateError.new("integer division or modulo by zero", 0) if s2 == "0" || s2 == "-0"
+        q, _ = KrikriJinja.big_divmod(s1, s2)
+        KrikriJinja.norm_decimal(q)
       else
-        x = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
-        y = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        x = numish(a) || raise TemplateError.new("unsupported operand", 0)
+        y = numish(b) || raise TemplateError.new("unsupported operand", 0)
         raise TemplateError.new("division by zero", 0) if y == 0.0
-        (x / y).floor.to_f64
+        r = PyLibM.fmod(x, y)
+        q = ((x - r) / y).floor
+        q -= 1.0 if r != 0.0 && (r < 0.0) != (y < 0.0)
+        q = -0.0 if q == 0.0 && (1.0 / (x / y)) < 0.0
+        q
       end
     end
 
@@ -992,12 +1092,17 @@ module KrikriJinja
         r = x % y
         r = r + y.abs if r != 0 && (r < 0) != (y < 0)
         r
+      elsif (s1 = big_dec_str(a)) && (s2 = big_dec_str(b))
+        raise TemplateError.new("integer division or modulo by zero", 0) if s2 == "0" || s2 == "-0"
+        _, r = KrikriJinja.big_divmod(s1, s2)
+        KrikriJinja.norm_decimal(r)
       else
-        x = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
-        y = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+        x = numish(a) || raise TemplateError.new("unsupported operand", 0)
+        y = numish(b) || raise TemplateError.new("unsupported operand", 0)
         raise TemplateError.new("division by zero", 0) if y == 0.0
-        r = x % y
-        r = r + y.abs if r != 0 && (r < 0) != (y < 0)
+        r = PyLibM.fmod(x, y)
+        r = r + y if r != 0 && (r < 0) != (y < 0)
+        r = 0.0 if r == 0
         r
       end
     end
@@ -1005,20 +1110,32 @@ module KrikriJinja
     private def power(a : AnyV, b : AnyV) : AnyV
       if (x = as_int(a)) && (y = as_int(b))
         if y >= 0
+          raise TemplateError.new("integer power result too large", 0) if y > 1 && x.to_s.size * y > 40_000
           begin
             return x ** y
           rescue OverflowError
-            return KrikriJinja.big_pow(x, y)
+            return KrikriJinja.norm_decimal(KrikriJinja.big_pow(x, y))
           end
         else
           raise TemplateError.new("0.0 cannot be raised to a negative power", 0) if x == 0
           return x.to_f64 ** y
         end
       end
-      af = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
-      bf = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+      if (s1 = big_dec_str(a)) && (yb = as_int(b)) && yb >= 0
+        raise TemplateError.new("integer power result too large", 0) if yb > 1 && s1.lstrip('-').size * yb > 40_000
+        return KrikriJinja.norm_decimal(KrikriJinja.big_pow_str(s1, yb))
+      end
+      if (x = as_int(a)) && (big_exp = b.as?(BigIntValue))
+        raise TemplateError.new("0.0 cannot be raised to a negative power", 0) if x == 0 && big_exp.negative?
+        return x if x == 0 || x == 1
+        return (big_exp.digits[-1] - '0') % 2 == 0 ? 1i64 : -1i64 if x == -1
+      end
+      af = numish(a) || raise TemplateError.new("unsupported operand", 0)
+      bf = numish(b) || raise TemplateError.new("unsupported operand", 0)
       raise TemplateError.new("0.0 cannot be raised to a negative power", 0) if af == 0.0 && bf < 0
-      af ** bf
+      r = af ** bf
+      raise TemplateError.new("numerical result out of range", 0) if r.infinite? && !af.infinite? && !bf.infinite?
+      r
     end
 
 
@@ -1027,6 +1144,7 @@ module KrikriJinja
       when Int64 then -v
       when Float64 then -v
       when Bool then v ? -1i64 : 0i64
+      when BigIntValue then v.negated
       else raise TemplateError.new("cannot negate #{v.class}", 0)
       end
     end
@@ -1094,15 +1212,25 @@ module KrikriJinja
                  alt = KrikriJinja.dict_key_alt(key)
                  raw[k]? || (alt ? raw[alt]? : nil)
                when Array
-                 idx = key.raw.as?(Int64) || raise TemplateError.new("list indices must be integers", expr.line)
-                 idx < 0 ? raw[raw.size + idx]? : raw[idx]?
+                 k = key.raw.as?(Int64) || as_int(key.raw) || nil
+                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 idx = k
+                 return AnyValue.new(Undefined.new) if idx < -raw.size.to_i64
+                 pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
+                 (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
                when String
-                 idx = key.raw.as?(Int64) || raise TemplateError.new("string indices must be integers", expr.line)
-                 pos = idx < 0 ? raw.size + idx : idx
-                 (0 <= pos < raw.size) ? AnyValue.new(raw[pos].to_s) : nil
+                 k = key.raw.as?(Int64) || as_int(key.raw) || nil
+                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 idx = k
+                 return AnyValue.new(Undefined.new) if idx < -raw.size.to_i64
+                 pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
+                 (0 <= pos < raw.size) ? AnyValue.new(raw[pos.to_i32].to_s) : nil
                when TupleValue
-                 idx = key.raw.as?(Int64) || raise TemplateError.new("tuple indices must be integers", expr.line)
-                 pos = idx < 0 ? raw.items.size + idx : idx
+                 k = key.raw.as?(Int64) || as_int(key.raw) || nil
+                 return AnyValue.new(Undefined.new) unless k.is_a?(Int64)
+                 idx = k
+                 return AnyValue.new(Undefined.new) if idx < -raw.items.size.to_i64
+                 pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
                  (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                when Nil
                  AnyValue.new(Undefined.new)

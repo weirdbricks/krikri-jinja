@@ -55,8 +55,16 @@ module KrikriJinja
   # iterable like an array but has no length, matching Python generators.
   class GeneratorValue
     getter items : Array(AnyValue)
+    getter fail : String?
 
-    def initialize(@items)
+    def initialize(@items, @fail = nil)
+    end
+
+    def materialize : Array(AnyValue)
+      if f = @fail
+        raise TemplateError.new(f, 0)
+      end
+      @items
     end
   end
 
@@ -70,8 +78,50 @@ module KrikriJinja
     end
   end
 
+  class BigIntValue
+    getter value : String
+
+    def self.parse(value : String) : Int64 | BigIntValue
+      value.to_i64? || new(value)
+    end
+
+    def initialize(@value : String)
+      unless @value.matches?(/\A-?(0|[1-9]\d*)\z/)
+        raise ArgumentError.new("invalid big integer: #{@value}")
+      end
+    end
+
+    def to_s : String
+      @value
+    end
+
+    def to_f64 : Float64
+      @value.to_f64
+    end
+
+    def negative? : Bool
+      @value.starts_with?('-')
+    end
+
+    def zero? : Bool
+      @value == "0"
+    end
+
+    def digits : String
+      @value.lstrip('-')
+    end
+
+    def negated : BigIntValue
+      BigIntValue.new(negative? ? digits : "-#{digits}")
+    end
+
+    def absolute : BigIntValue
+      BigIntValue.new(digits)
+    end
+  end
+
   # Anything a filter/test/global function may return.
-  alias AnyV = Nil | Bool | Int64 | Float64 | String | Array(AnyValue) |
+  alias AnyV = Nil | Bool | Int64 | Float64 | String | BigIntValue | Array(AnyValue) |
                Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue | GeneratorValue
 
   # Marker for callable values (macros and host-provided functions).

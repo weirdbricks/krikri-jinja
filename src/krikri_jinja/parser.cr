@@ -596,11 +596,15 @@ module KrikriJinja
       end
       name = tok.value
       advance
+      if current.type == TokenType::Ident && current.value == "is"
+        raise TemplateError.new("You cannot chain multiple tests with is", current.line)
+      end
       args = [] of ExprNode
       kwargs = [] of Tuple(String, ExprNode)
-      # a single trailing argument without parens is allowed: `is divisibleby 3`
+      # a single trailing argument without parens is allowed: `is divisibleby 3`;
+      # it binds as a primary/postfix chain, so `1 is eq 1 + 1` is (1 is eq 1) + 1
       if !at_block_or_var_end && !at_filter_or_paren_end && is_test_arg_start
-        args << parse_expression
+        args << parse_postfix_no_filter
       end
       if accept_op("(")
         loop do
@@ -630,9 +634,9 @@ module KrikriJinja
       when TokenType::Int, TokenType::Float, TokenType::String
         true
       when TokenType::Ident
-        !(KEYWORDS.includes?(tok.value) && !{"true", "false", "True", "False", "none", "None", "missing", "ignore"}.includes?(tok.value))
+        !{"else", "or", "and"}.includes?(tok.value)
       when TokenType::Op
-        {"(", "[", "{"}.includes?(tok.value)
+        {"[", "{"}.includes?(tok.value)
       else
         false
       end
@@ -694,11 +698,51 @@ module KrikriJinja
 
     private def parse_pow : Nodes::ExprNode
       expr = parse_unary
+      if expr.is_a?(Nodes::UnaryOpNode) && {"-", "+"}.includes?(expr.op) &&
+         numeric_const?(expr.operand) && current.type == TokenType::Op && current.value == "**"
+        # jinja folds -<literal> into a signed constant; the emitted python
+        # source then re-applies normal precedence unless the exponent is
+        # also fully constant: -2 ** p == -(2 ** p), -2 ** 2 == (-2) ** 2
+        base = expr.not_nil!
+        advance
+        exp = parse_pow
+        if expr_constant?(exp)
+          expr = Nodes::BinOpNode.new("**", base, exp, base.line)
+        else
+          inner = base.operand
+          pow = Nodes::BinOpNode.new("**", inner, exp, base.line)
+          expr = base.op == "-" ? Nodes::UnaryOpNode.new("-", pow, base.line).as(ExprNode) : pow.as(ExprNode)
+        end
+        return expr
+      end
       while current.type == TokenType::Op && current.value == "**"
         advance
         expr = Nodes::BinOpNode.new("**", expr, parse_unary, expr.line)
       end
       expr
+    end
+
+    private def numeric_const?(node : Nodes::ExprNode) : Bool
+      node.is_a?(Nodes::ConstNode) && (v = node.value; v.is_a?(Int64) || v.is_a?(BigIntValue) || v.is_a?(Float64))
+    end
+
+    private def expr_constant?(node : Nodes::ExprNode) : Bool
+      case node
+      when Nodes::ConstNode then true
+      when Nodes::UnaryOpNode then expr_constant?(node.operand)
+      when Nodes::BinOpNode then expr_constant?(node.left) && expr_constant?(node.right)
+      when Nodes::ListExprNode then node.items.all? { |i| expr_constant?(i) }
+      when Nodes::TupleExprNode then node.items.all? { |i| expr_constant?(i) }
+      when Nodes::DictExprNode
+        node.keys.all? { |k| expr_constant?(k) } && node.values.all? { |v| expr_constant?(v) }
+      when Nodes::FilterNode
+        expr_constant?(node.target) &&
+          node.args.all? { |a| expr_constant?(a) } &&
+          node.kwargs.all? { |(_, v)| expr_constant?(v) }
+      when Nodes::GetitemNode
+        expr_constant?(node.obj) && expr_constant?(node.key)
+      else false
+      end
     end
 
     private def parse_unary : Nodes::ExprNode
@@ -707,8 +751,9 @@ module KrikriJinja
         advance
         operand = parse_unary_no_filter
         expr = Nodes::UnaryOpNode.new(tok.value, operand, tok.line).as(ExprNode)
-        # filters bind tighter than unary operators: -4.7|abs == abs(-4.7)
-        return parse_postfix_from(expr, expr.line)
+        # python: unary binds tighter than `is` tests and filters apply to
+        # the negated value (-4.7|abs == abs(-4.7))
+        return parse_postfix_from(expr, expr.line, allow_filter: true, allow_test: true)
       end
       parse_postfix
     end
@@ -730,10 +775,10 @@ module KrikriJinja
 
     private def parse_postfix_no_filter : Nodes::ExprNode
       expr = parse_primary
-      parse_postfix_from(expr, expr.line, allow_filter: false)
+      parse_postfix_from(expr, expr.line, allow_filter: false, allow_test: false)
     end
 
-    private def parse_postfix_from(expr : ExprNode, line : Int32, allow_filter = true) : ExprNode
+    private def parse_postfix_from(expr : ExprNode, line : Int32, allow_filter = true, allow_test = true) : ExprNode
       loop do
         tok = current
         if tok.type == TokenType::Op && tok.value == "."
@@ -755,6 +800,9 @@ module KrikriJinja
         elsif tok.type == TokenType::Op && tok.value == "("
           args, kwargs = parse_arg_list
           expr = Nodes::CallExprNode.new(expr, args, kwargs, line)
+        elsif tok.type == TokenType::Ident && tok.value == "is" && allow_test
+          advance
+          expr = parse_test(expr)
         elsif tok.type == TokenType::Op && tok.value == "|" && allow_filter
           advance
           name_tok = current
@@ -864,8 +912,8 @@ module KrikriJinja
       case tok.type
       when TokenType::Int
         advance
-        # int literals beyond Int64 become big-int decimal strings
-        Nodes::ConstNode.new(tok.value.to_i64? || tok.value, line)
+        # int literals beyond Int64 become BigIntValue
+        Nodes::ConstNode.new(BigIntValue.parse(tok.value), line)
       when TokenType::Float
         advance
         Nodes::ConstNode.new(tok.value.to_f64, line)
