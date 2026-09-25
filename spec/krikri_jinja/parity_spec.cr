@@ -673,6 +673,17 @@ y")
       end
     end
   end
+
+  describe "parity: round 19" do
+    it "groups case-insensitively by default, keeping the first key form" do
+      KrikriJinja.render("{% for g in items | groupby('k') %}{{ g.grouper }};{% endfor %}",
+        {"items" => [{"k" => "A"}, {"k" => "a"}]}).should eq("A;")
+    end
+
+    it "lstrips before comment tags too" do
+      render_env("x\n  {# c #}\ny", lstrip_blocks: true).should eq("x\n\ny")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
