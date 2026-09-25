@@ -39,6 +39,13 @@ module KrikriJinja
     end
   end
 
+  # Base class for an opaque, caller-supplied context handed to registered
+  # filters, tests, and functions. Hosts that need controller-side state
+  # (variable scope, role paths, plugin runners) subclass this and read it
+  # back from `ctx.host_context` inside their registrations.
+  abstract class HostContext
+  end
+
   # Marker for undefined variables, mirroring Jinja's Undefined behavior:
   # stringifies to "", is falsy, fails `is none`, and raises on operations.
   class Undefined

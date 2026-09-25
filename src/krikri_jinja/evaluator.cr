@@ -322,12 +322,13 @@ module KrikriJinja
     getter options : LexerOptions
     getter autoescape : Bool
     getter undefined : Undefined
+    property host_context : HostContext?
     getter filters : Hash(String, FilterFn)
     getter tests : Hash(String, TestFn)
 
     def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV,
                    @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false,
-                   @undefined : Undefined = Undefined.new)
+                   @undefined : Undefined = Undefined.new, @host_context = nil.as(HostContext?))
       globals = KrikriJinja.default_globals
       user_globals.each { |k, v| globals[k] = KrikriJinja.wrap_value(v) }
       @globals = globals
@@ -336,10 +337,18 @@ module KrikriJinja
     end
 
     def with_undefined(undefined : Undefined) : Engine
-      copy = Engine.new(@loader, {} of String => AnyV, @options, @autoescape, undefined)
+      copy = Engine.new(@loader, {} of String => AnyV, @options, @autoescape, undefined, @host_context)
       @globals.each { |key, value| copy.globals[key] = value }
       @filters.each { |key, value| copy.filters[key] = value }
       @tests.each { |key, value| copy.tests[key] = value }
+      copy
+    end
+
+    # Derives an engine that hands `context` to every registered filter,
+    # test, and function invoked while rendering or evaluating.
+    def with_host_context(context : HostContext) : Engine
+      copy = with_undefined(@undefined)
+      copy.host_context = context
       copy
     end
 
@@ -426,6 +435,7 @@ module KrikriJinja
 
     private def evaluate_expression_value(source : String, variables) : AnyValue
       ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx.host_context = @host_context
       variables.each { |key, value| ctx[key] = KrikriJinja.wrap_value(value) }
       expression = Parser.parse_expression(source, @options)
       Evaluator.new(ctx, self).eval(expression)
@@ -456,6 +466,7 @@ module KrikriJinja
 
     private def render_variables(source : String, variables)
       ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx.host_context = @host_context
       ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = KrikriJinja.wrap_value(v) }
       node = Parser.parse(source, @options)
@@ -897,6 +908,7 @@ module KrikriJinja
         end
       else
         sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
+        sub_ctx.host_context = @ctx.host_context
         sub_eval = Evaluator.new(sub_ctx, @engine)
         sub_eval.render_template(sub_node)
         @out << sub_eval.output.to_s
@@ -909,6 +921,7 @@ module KrikriJinja
       source = @ctx.loader.try(&.get_source(name))
       raise TemplateError.new("template #{name.inspect} not found", node.line, kind: ErrorKind::Loader, template_name: name) unless source
       sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
+      sub_ctx.host_context = @ctx.host_context
       if node.context
         # {% import ... with context %}: the imported module resolves names
         # against the importing template's visible (non-loop) variables.
