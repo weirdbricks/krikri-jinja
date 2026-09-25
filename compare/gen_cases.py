@@ -2279,6 +2279,78 @@ add("ternary in default arg", "{{ missing | default('a' if true else 'b') }}")
 add("deep nested dicts access", "{{ a.b.c.d.e }}", {"a": {"b": {"c": {"d": {"e": "deep"}}}}})
 add("tojson with unicode key", "{{ {'k\u00e9': 1} | tojson }}")
 
+
+# ================= edge-case expansion (round 18) =================
+
+# --- filter value shapes ----------------------------------------------------------
+add("sort dict returns keys", "{{ {'b': 1, 'a': 2} | sort | join(',') }}")
+add("unique on string", "{{ 'aba' | unique | join(',') }}")
+add("reverse on tuple", "{{ (1, 2) | reverse | join(',') }}")
+add("first on generator", "{{ [1,2] | map('string') | first }}")
+add("last on generator", "{{ [1,2] | map('string') | last }}")
+add("min on string chars", "{{ 'cba' | min }} {{ 'cba' | max }}")
+add("sum on tuple", "{{ (1, 2.5) | sum }}")
+add("length on range", "{{ range(5) | length }}")
+add("list on range", "{{ range(3) | join(',') }}")
+add("batch on string", "{% for r in 'abcde' | batch(2, '-') %}[{{ r | join }}]{% endfor %}")
+add("slice on string", "{% for c in 'abcd' | slice(3) %}[{{ c | join }}]{% endfor %}")
+add("select on tuple", "{{ (1,2,3) | select('even') | join(',') }}")
+
+# --- undefined: exhaustive ops ------------------------------------------------------
+add("undefined add rev", "{{ 1 + missing }}")
+add("undefined mul rev", "{{ 2 * missing }}")
+add("undefined pow rev", "{{ 2 ** missing }}")
+add("undefined lt rev", "{{ missing < 1 }}")
+add("undefined ge rev", "{{ missing >= 1 }}")
+add("undefined in operator", "{{ missing in [1] }} {{ 1 in missing }}")
+
+# --- loop: round 8 --------------------------------------------------------------------
+add("loop over empty string", "{% for c in '' %}x{% else %}e{% endfor %}")
+add("loop over empty tuple", "{% for x in () %}x{% else %}e{% endfor %}")
+add("loop index0 in recursion", "{% for i in data recursive %}{{ loop.index0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("recursive with include", "{% for i in [1] recursive %}{% include 'p.html' %}{% endfor %}", templates={
+    "p.html": "P{{ loop is defined }}"})
+add("for unpack tuple values", "{% for a, b in [(1, 2)] %}{{ a }}{{ b }}{% endfor %}")
+
+# --- macros: round 7 ---------------------------------------------------------------------
+add("macro kwargs default collision", "{% macro m(a=1, b=2) %}{{ a }}{{ b }}{% endmacro %}{{ m(b=9) }}")
+add("macro positional fill skip", "{% macro m(a, b=2, c=3) %}{{ a }}{{ b }}{{ c }}{% endmacro %}{{ m(1, c=9) }}")
+add("caller nested macro call", "{% macro outer() %}{{ caller() }}{% endmacro %}{% macro inner() %}{{ caller() }}{% endmacro %}{% call inner() %}X{% endcall %}{% call outer() %}Y{% endcall %}")
+
+# --- inheritance: round 13 -------------------------------------------------------------------
+add("extends then include loop var", "{% extends 'base.html' %}{% block b %}{% for i in [1] %}{% include 'p.html' %}{% endfor %}{% endblock %}", templates={
+    "base.html": "{% block b %}{% endblock %}",
+    "p.html": "P{{ i }}"})
+add("block override with nested blocks", "{% extends 'base.html' %}{% block outer %}O{% block inner %}I{% endblock %}{% endblock %}", templates={
+    "base.html": "{% block outer %}[{% block inner %}D{% endblock %}]{% endblock %}"})
+
+# --- whitespace: round 14 -----------------------------------------------------------------------
+add("marker after tag name", "{% if true %}x{% endif -%}\ny")
+add("var marker with newline before", "a\n{{- 'b' }}")
+add("comment marker no strip", "a {#- c -#} b")
+add("raw marker right only", "{% raw %}x{% endraw -%}\ny")
+
+# --- numbers: round 14 -----------------------------------------------------------------------------
+add("pow chain left", "{{ 3 ** 2 ** 1 }}")
+add("neg zero pow", "{{ (-0.0) ** 2 }}")
+add("big int to float", "{{ 9223372036854775807 + 0.0 }}")
+add("float compare int huge", "{{ 1e18 == 1000000000000000000 }}")
+add("mod chain float", "{{ 10.5 % 3 % 2 }}")
+
+# --- misc: round 13 ----------------------------------------------------------------------------------
+add("join markup items", "{{ ['<a>', 'b'] | join(',') }}", autoescape=True)
+add("escape markup via filter chain", "{{ ('<x>' | safe) | trim | escape }}", autoescape=False)
+add("tuple attr access via int", "{{ t[1] }}", {"t": [10, 20]})
+add("dict access with int via get", "{{ {1: 'a'}.get(1.0) }}")
+add("if with is not in", "{% if 1 is not in [2] %}y{% endif %}")
+add("nested ternary chain deep", "{{ 'a' if false else 'b' if true else 'c' }}")
+add("set conditional tuple", "{% set x = (1, 2) if true else (3,) %}{{ x }}")
+add("deep method chain on literal", "{{ 'x-y'.split('-')[1].upper() }}")
+add("loop var in included template target", "{% for n in [1,2] %}{% include 'p.html' %}{% endfor %}", templates={
+    "p.html": "{{ n }}"})
+add("macro call in dict value", "{% macro m() %}v{% endmacro %}{{ {'k': m()} }}", autoescape=False)
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
