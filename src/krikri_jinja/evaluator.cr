@@ -1011,10 +1011,14 @@ module KrikriJinja
             return KrikriJinja.big_pow(x, y)
           end
         else
+          raise TemplateError.new("0.0 cannot be raised to a negative power", 0) if x == 0
           return x.to_f64 ** y
         end
       end
-      (a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)) ** (b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0))
+      af = a.as?(Float64) || as_int(a).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+      bf = b.as?(Float64) || as_int(b).try(&.to_f64) || raise TemplateError.new("unsupported operand", 0)
+      raise TemplateError.new("0.0 cannot be raised to a negative power", 0) if af == 0.0 && bf < 0
+      af ** bf
     end
 
 
