@@ -1,6 +1,7 @@
 module KrikriJinja
   # Built-in tests (the `is` operator). All values are boxed AnyValue.
   alias TestFn = Proc(AnyValue, Array(AnyValue), Hash(String, AnyValue), Context, Bool)
+  alias JsonTestFn = Proc(JSON::Any, Array(JSON::Any), Hash(String, JSON::Any), Bool)
 
   BUILTIN_TESTS = {} of String => TestFn
 
@@ -45,8 +46,8 @@ module KrikriJinja
   register_test("lower") { |v, _a, _k, _c| v.raw.is_a?(String) && v.raw.as(String) == v.raw.as(String).downcase }
   register_test("upper") { |v, _a, _k, _c| v.raw.is_a?(String) && v.raw.as(String) == v.raw.as(String).upcase }
   register_test("escaped") { |v, _a, _k, _c| v.raw.is_a?(Markup) }
-  register_test("filter") { |v, _a, _k, _c| v.raw.is_a?(String) && !!BUILTIN_FILTERS[v.raw.as(String)]? }
-  register_test("test") { |v, _a, _k, _c| v.raw.is_a?(String) && !!BUILTIN_TESTS[v.raw.as(String)]? }
+  register_test("filter") { |v, _a, _k, c| v.raw.is_a?(String) && !!c.filter(v.raw.as(String)) }
+  register_test("test") { |v, _a, _k, c| v.raw.is_a?(String) && !!c.test(v.raw.as(String)) }
 
   private def self.same_as?(a : AnyV, b : AnyV) : Bool
     case {a, b}

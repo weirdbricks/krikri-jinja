@@ -208,6 +208,12 @@ describe KrikriJinja do
       engine.render_string("{{ site }}").should eq("example")
     end
 
+    it "evaluates structured expressions as JSON values" do
+      variables = {"items" => JSON.parse(%([{"name":"a"},{"name":"b"}]))}
+      KrikriJinja.evaluate_expression("items | map(attribute='name')", variables).to_json.should eq(%(["a","b"]))
+      KrikriJinja.evaluate_expression("none", variables).not_nil!.raw.should be_nil
+      KrikriJinja.parse_expression("1 + 2").should be_a(KrikriJinja::Nodes::BinOpNode)
+    end
     it "keeps FileSystemLoader reads inside its root" do
       root = File.tempname
       sibling = "#{root}_sibling"
@@ -223,14 +229,50 @@ describe KrikriJinja do
       Dir.delete(root) if root && Dir.exists?(root)
     end
 
-    it "allows registering custom filters and tests" do
-      KrikriJinja::BUILTIN_FILTERS["shout"] = ->(v : KrikriJinja::AnyValue, _a : Array(KrikriJinja::AnyValue), _k : Hash(String, KrikriJinja::AnyValue), _c : KrikriJinja::Context) do
+    it "allows registering engine-local filters, tests, globals, and functions" do
+      engine = KrikriJinja::Engine.new
+      engine.register_filter("shout") do |v, _args, _kwargs, _ctx|
         KrikriJinja::AnyValue.new(KrikriJinja.stringify(v).upcase + "!")
       end
-      KrikriJinja::BUILTIN_TESTS["loud"] = ->(v : KrikriJinja::AnyValue, _a : Array(KrikriJinja::AnyValue), _k : Hash(String, KrikriJinja::AnyValue), _c : KrikriJinja::Context) do
+      engine.register_test("loud") do |v, _args, _kwargs, _ctx|
         KrikriJinja.stringify(v).upcase == KrikriJinja.stringify(v)
       end
-      KrikriJinja.render("{{ 'hey' | shout }} {{ 'HEY' is loud }}").should eq("HEY! True")
+      engine.register_global("site", "example")
+      engine.register_function("answer") do |_args, _kwargs, _ctx|
+        KrikriJinja::AnyValue.new(42i64)
+      end
+      engine.render_string("{{ 'hey' | shout }} {{ 'HEY' is loud }} {{ site }} {{ answer() }}").should eq("HEY! True example 42")
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render("{{ 'hey' | shout }}") }
+    end
+
+    it "registers JSON-compatible extension callbacks" do
+      engine = KrikriJinja::Engine.new
+      engine.register_json_filter("json_exclaim") do |target, _args, _kwargs|
+        JSON::Any.new(target.as_s + "!")
+      end
+      engine.register_json_test("json_text") do |target, _args, _kwargs|
+        target.raw.is_a?(String)
+      end
+      engine.register_json_function("json_identity") do |args, _kwargs|
+        args[0]
+      end
+      engine.render_string("{{ 'x' | json_exclaim }} {{ 'x' is json_text }} {{ json_identity([1, true]) }}").should eq("x! True [1, True]")
+    end
+
+    it "keeps structured errors inspectable" do
+      begin
+        KrikriJinja.evaluate_expression("missing + 1", {} of String => JSON::Any, strict: true)
+        raise "expected expression failure"
+      rescue error : KrikriJinja::TemplateError
+        error.kind.should eq(KrikriJinja::ErrorKind::Runtime)
+        error.to_json.includes?("\"kind\":\"runtime\"").should be_true
+      end
+    end
+
+    it "registers loader-backed functions" do
+      engine = KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"partial.html" => "partial"}))
+      engine.register_loader_function("partial", "partial.html")
+      engine.render_string("{{ partial() }}").should eq("partial")
     end
   end
 end

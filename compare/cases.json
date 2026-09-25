@@ -103,6 +103,53 @@
   "data": {}
  },
  {
+  "name": "krikri conditional defined",
+  "template": "{{ name is defined and name == 'server' }}",
+  "data": {
+   "name": "server"
+  }
+ },
+ {
+  "name": "krikri conditional missing",
+  "template": "{{ name is defined and name == 'server' }}",
+  "data": {}
+ },
+ {
+  "name": "krikri attribute default",
+  "template": "{{ user.name | default('unknown') }}",
+  "data": {
+   "user": {}
+  }
+ },
+ {
+  "name": "krikri selectattr",
+  "template": "{{ users | selectattr('enabled') | list | length }}",
+  "data": {
+   "users": [
+    {
+     "enabled": true
+    },
+    {
+     "enabled": false
+    }
+   ]
+  }
+ },
+ {
+  "name": "krikri nested list",
+  "template": "{{ rows | map(attribute='name') | join(',') }}",
+  "data": {
+   "rows": [
+    {
+     "name": "a"
+    },
+    {
+     "name": "b"
+    }
+   ]
+  }
+ },
+ {
   "name": "compare",
   "template": "{{ 1 < 2 }} {{ 'a' == 'a' }} {{ 2 != 2 }} {{ 3 >= 3 }} {{ 1 <= 0 }}",
   "data": {}
@@ -131,6 +178,46 @@
   "name": "undefined truthiness",
   "template": "{{ 'y' if missing else 'n' }}",
   "data": {}
+ },
+ {
+  "name": "strict undefined output",
+  "template": "{{ missing }}",
+  "data": {},
+  "env": {
+   "undefined": "strict"
+  }
+ },
+ {
+  "name": "strict undefined default",
+  "template": "{{ missing | default('fallback') }}",
+  "data": {},
+  "env": {
+   "undefined": "strict"
+  }
+ },
+ {
+  "name": "strict undefined tests",
+  "template": "{{ missing is defined }} {{ missing is undefined }}",
+  "data": {},
+  "env": {
+   "undefined": "strict"
+  }
+ },
+ {
+  "name": "strict undefined iteration",
+  "template": "{% for item in missing %}{{ item }}{% endfor %}",
+  "data": {},
+  "env": {
+   "undefined": "strict"
+  }
+ },
+ {
+  "name": "strict undefined comparison",
+  "template": "{{ missing == none }}",
+  "data": {},
+  "env": {
+   "undefined": "strict"
+  }
  },
  {
   "name": "getattr getitem",

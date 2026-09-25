@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.3.1)
+## Status (v0.4.0)
 
 Implemented:
 
@@ -61,17 +61,15 @@ Additional compatibility features:
   %-conversion support, `Markup`-aware `safe`/`escape` under autoescape
 - Tests: `escaped`, `filter`, `test`, `sameas`
 - `Engine#render(name)` for loader-based rendering, engine-level
-  `autoescape`, and filter/test registration by mutating
-  `BUILTIN_FILTERS` / `BUILTIN_TESTS`
+  `autoescape`, `StrictUndefined`, structured expression evaluation, and
+  engine-local filter/test/global/function registration
 
 Known gaps: `{% trans %}` / i18n (out of scope), `spaceless`,
-`debug` tag, custom filter/test classes beyond hash registration,
-`StrictUndefined` semantics (undefined is nil-based), `truncate`
-`nowrap`, `groupby` secondary sort guarantees, `wordwrap`
-`break_long_words` tuning, and complex results from negative fractional
-powers such as `-5 ** 2.5`. Lazy filter generators are iterated by templates
-but do not reproduce Python's process-specific `<generator ... at 0x...>`
-repr. Integers beyond `Int64` use a dedicated runtime value type, so
+`debug` tag, `truncate` `nowrap`, `groupby` secondary sort guarantees,
+`wordwrap` `break_long_words` tuning, and complex results from negative
+fractional powers such as `-5 ** 2.5`. Lazy filter generators are iterated by
+templates but do not reproduce Python's process-specific `<generator ... at
+0x...>` repr. Integers beyond `Int64` use a dedicated runtime value type, so
 digit-shaped strings remain ordinary strings.
 
 ## Usage
@@ -86,6 +84,51 @@ engine = KrikriJinja::Engine.new(KrikriJinja::FileSystemLoader.new("templates"))
 engine.render_string("{% extends 'base.html' %}")
 ```
 
+## Structured expressions and extensions
+
+Expression evaluation returns a typed `JSON::Any` value instead of rendered
+text. JSON `null` remains distinct from an undefined expression result:
+lenient undefined is returned as `nil`, while strict undefined raises a
+`TemplateError`.
+
+```crystal
+vars = {"items" => JSON.parse(%([{"name": "a"}, {"name": "b"}]))}
+result = KrikriJinja.evaluate_expression("items | map(attribute='name')", vars)
+result.to_json
+# => ["a","b"]
+```
+
+Use an engine to configure strict undefined and register extensions locally.
+The `register_json_*` APIs accept only JSON-compatible values, so callers do
+not need to construct internal `AnyValue` instances.
+
+```crystal
+engine = KrikriJinja::Engine.new(
+  KrikriJinja::DictLoader.new({"partial.html" => "hello"}),
+  undefined: KrikriJinja::StrictUndefined.new
+)
+engine.register_json_filter("exclaim") do |value, _args, _kwargs|
+  JSON::Any.new("#{value.as_s}!")
+end
+engine.register_json_test("text") do |value, _args, _kwargs|
+  value.raw.is_a?(String)
+end
+engine.register_json_function("identity") do |args, _kwargs|
+  args[0]
+end
+engine.register_global("answer", JSON::Any.new(42))
+engine.register_loader_function("partial", "partial.html")
+engine.render_string("{{ 'hello' | exclaim }} {{ 'hello' is text }} {{ identity([1, true]) | tojson }} {{ partial() }}")
+# => "hello! True [1,true] hello"
+```
+
+`register_filter`, `register_test`, and `register_function` expose the native
+value API for extensions that need `AnyValue`; `register_global` accepts plain
+values and deep-converts nested arrays and hashes. `known_filter?` and
+`known_test?` support compile-time feature checks. `TemplateError#to_json`
+returns a structured error object containing its kind, message, line, and
+optional operation or template metadata.
+
 ## Differential testing against real Jinja2
 
 `compare/` renders a shared case corpus with **both** real Jinja2 (via
@@ -94,10 +137,10 @@ the outputs byte for byte:
 
 ```bash
 ./compare/run.sh
-# total: 1,990  identical: 1,749  both-error: 241  divergent: 0
+# total: 2,000  identical: 1,756  both-error: 244  divergent: 0
 ```
 
-- `compare/gen_cases.py` generates `cases.json` (1,990 cases: literals,
+- `compare/gen_cases.py` generates `cases.json` (2,000 cases: literals,
   arbitrary-precision arithmetic, filters, tests, statements, string and
   integer methods, whitespace control, raw blocks, inheritance/includes/
   imports, autoescape, recursive loops, and fuzz-class regressions)
@@ -128,7 +171,7 @@ parsing, and the constant-folding precedence trap for negative-literal-base
 ## Development
 
 ```bash
-crystal spec        # run the unit/integration suite (193 specs)
-./compare/run.sh    # differential test against real Jinja2 (1,990 cases)
+crystal spec        # run the unit/integration suite (199 specs)
+./compare/run.sh    # differential test against real Jinja2 (2,000 cases)
 ./compare/fuzz_run.sh 8 3000 1000  # 8 fuzz rounds, starting at seed 1001
 ```
