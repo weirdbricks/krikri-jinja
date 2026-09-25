@@ -106,6 +106,7 @@ describe KrikriJinja do
     it "filesizeformat" do
       KrikriJinja.render("{{ 1000 | filesizeformat }} {{ 1000 | filesizeformat(true) }} {{ 1 | filesizeformat }}")
         .should eq("1.0 kB 1000 Bytes 1 Byte")
+      KrikriJinja.render("{{ 9223372036854775808 | filesizeformat }}").should eq("9.2 EB")
     end
 
     it "format with conversions" do
