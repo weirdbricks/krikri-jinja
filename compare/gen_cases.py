@@ -2208,6 +2208,77 @@ add("filter arg via variable", "{{ 'a.b' | replace(sep, '-') }}", {"sep": "."})
 add("nested set block render", "{% set x %}a{% set y %}b{% endset %}{% endset %}{{ x }}")
 add("comment between var tags", "{{ 1 }}{# c #}{{ 2 }}")
 
+
+# ================= edge-case expansion (round 17) =================
+
+# --- filter arg shapes ---------------------------------------------------------
+add("join sep markup", "{{ ['a', 'b'] | join(sep) }}", {"sep": "-"})
+add("sort by variable attr", "{{ users | sort(attribute=attr) | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "b", "age": 1}, {"n": "a", "age": 2}], "attr": "age"})
+add("truncate via variables", "{{ s | truncate(l, kw, e, lw) }}", {"s": "abcdefgh", "l": 6, "kw": True, "e": "...", "lw": 0})
+add("round via variable", "{{ x | round(p) }}", {"x": 1.25, "p": 1})
+add("groupby variable attr", "{% for g in items | groupby(k) %}{{ g.grouper }};{% endfor %}",
+    {"items": [{"t": "a"}, {"t": "b"}], "k": "t"})
+add("map variable filter name", "{{ ['a'] | map(f) | join(',') }}", {"f": "upper"})
+
+# --- string methods: exotic -------------------------------------------------------
+add("str title numbers end", "{{ 'a1 1b'.title() }}")
+add("str isalpha spaces", "{{ 'a b'.isalpha() }}")
+add("str strip newlines only", "{{ 'a\\nb'.strip() }}")
+add("str split unicode sep", "{{ 'a\\u00e9b'.split('\\u00e9') | join('-') }}")
+add("str find case", "{{ 'Abc'.find('B') }}")
+add("str count overlap avoid", "{{ 'aaa'.count('aa') }}")
+add("str zfill already wide", "{{ 'abc'.zfill(2) }}")
+add("str center same width", "{{ 'abc'.center(3) }}|")
+add("str rpartition single char", "{{ 'ab'.rpartition('a') | join('|') }}")
+
+# --- loop: round 7 -----------------------------------------------------------------
+add("recursive loop over strings", "{% for i in data recursive %}{{ i }}{{ loop(i) if false }}{% endfor %}", {"data": "ab"})
+add("loop.changed with missing", "{% for x in [1] %}{{ loop.changed(missing) }}{% endfor %}")
+add("for over dict keys sorted by dictsort", "{% for k, v in d | dictsort %}{{ k }}{{ v }}{% endfor %}", {"d": {"b": 2, "a": 1}})
+add("nested loop same target name", "{% for i in [1,2] %}{% for i in [3,4] %}{{ i }}{% endfor %}|{% endfor %}")
+add("loop.index in recursive after nested", "{% for a in data recursive %}{{ loop.index }}{% for b in a.c | default([]) %}{{ b }}{% endfor %};{% endfor %}",
+    {"data": [{"c": ["x"]}, {"c": []}]})
+
+# --- macros: round 6 ------------------------------------------------------------------
+add("macro with default using filter", "{% macro m(a) %}{{ a | upper }}{% endmacro %}{{ m('x') }}")
+add("macro param named varargs", "{% macro m(varargs) %}{{ varargs }}{% endmacro %}{{ m('v') }}")
+add("macro param named kwargs", "{% macro m(kwargs) %}{{ kwargs }}{% endmacro %}{{ m('k') }}")
+add("macro called with none", "{% macro m(a) %}{{ a is none }}{% endmacro %}{{ m(none) }}")
+add("macro in set block", "{% set x %}{% macro m() %}M{% endmacro %}{{ m() }}{% endset %}{{ x }}")
+
+# --- inheritance: round 12 ----------------------------------------------------------------
+add("extends with dynamic name var", "{% extends t %}{% block b %}C{% endblock %}", {"t": "base.html"}, templates={
+    "base.html": "{% block b %}B{% endblock %}"})
+add("include with variable name", "{% include t %}", {"t": "p.html"}, templates={"p.html": "P"})
+add("import with variable name", "{% import t as m %}{{ m.v }}", {"t": "m.html"}, templates={
+    "m.html": "{% set v = 'V' %}"})
+add("super usage without extends error", "{% block b %}{{ super() }}{% endblock %}")
+
+# --- whitespace: round 13 --------------------------------------------------------------------
+add("marker only tag line", "a\n  {%- set x = 1 %}\nb{{ x }}")
+add("trim after comment tag", "a\n{# c #}\nb", trim_blocks=False)
+add("lstrip var tag no effect", "x\n  {{ 1 }}", lstrip_blocks=True)
+add("markers nested for if", "{% for i in [1] -%}\n {%- if true -%}X{%- endif -%}\n{%- endfor %}")
+
+# --- numbers: round 13 --------------------------------------------------------------------------
+add("float pow frac base", "{{ 0.5 ** 2 }}")
+add("int overflow check add", "{{ 9223372036854775806 + 1 }}")
+add("big compare negative", "{{ -9223372036854775807 - 1 < -9223372036854775807 }}")
+add("mixed eq bool float", "{{ false == 0.0 }} {{ true == 1.0 }}")
+add("div chain negatives", "{{ -8 / 4 / -1 }}")
+
+# --- misc: round 12 -------------------------------------------------------------------------------
+add("nested namespaces", "{% set a = namespace(b=namespace(c=1)) %}{{ a.b.c }}")
+add("dict key by variable", "{{ d[k] }}", {"d": {"x": 1}, "k": "x"})
+add("tuple index negative", "{{ (1,2,3)[-2] }}")
+add("markup compare markup", "{{ ('x' | safe) == ('x' | safe) }}", autoescape=False)
+add("filter chain order preserved", "{{ ' a ' | trim | upper | length }}")
+add("if with parenthesized or", "{% if (true or false) and true %}y{% endif %}")
+add("ternary in default arg", "{{ missing | default('a' if true else 'b') }}")
+add("deep nested dicts access", "{{ a.b.c.d.e }}", {"a": {"b": {"c": {"d": {"e": "deep"}}}}})
+add("tojson with unicode key", "{{ {'k\u00e9': 1} | tojson }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")

@@ -9966,5 +9966,332 @@
   "name": "comment between var tags",
   "template": "{{ 1 }}{# c #}{{ 2 }}",
   "data": {}
+ },
+ {
+  "name": "join sep markup",
+  "template": "{{ ['a', 'b'] | join(sep) }}",
+  "data": {
+   "sep": "-"
+  }
+ },
+ {
+  "name": "sort by variable attr",
+  "template": "{{ users | sort(attribute=attr) | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "b",
+     "age": 1
+    },
+    {
+     "n": "a",
+     "age": 2
+    }
+   ],
+   "attr": "age"
+  }
+ },
+ {
+  "name": "truncate via variables",
+  "template": "{{ s | truncate(l, kw, e, lw) }}",
+  "data": {
+   "s": "abcdefgh",
+   "l": 6,
+   "kw": true,
+   "e": "...",
+   "lw": 0
+  }
+ },
+ {
+  "name": "round via variable",
+  "template": "{{ x | round(p) }}",
+  "data": {
+   "x": 1.25,
+   "p": 1
+  }
+ },
+ {
+  "name": "groupby variable attr",
+  "template": "{% for g in items | groupby(k) %}{{ g.grouper }};{% endfor %}",
+  "data": {
+   "items": [
+    {
+     "t": "a"
+    },
+    {
+     "t": "b"
+    }
+   ],
+   "k": "t"
+  }
+ },
+ {
+  "name": "map variable filter name",
+  "template": "{{ ['a'] | map(f) | join(',') }}",
+  "data": {
+   "f": "upper"
+  }
+ },
+ {
+  "name": "str title numbers end",
+  "template": "{{ 'a1 1b'.title() }}",
+  "data": {}
+ },
+ {
+  "name": "str isalpha spaces",
+  "template": "{{ 'a b'.isalpha() }}",
+  "data": {}
+ },
+ {
+  "name": "str strip newlines only",
+  "template": "{{ 'a\\nb'.strip() }}",
+  "data": {}
+ },
+ {
+  "name": "str split unicode sep",
+  "template": "{{ 'a\\u00e9b'.split('\\u00e9') | join('-') }}",
+  "data": {}
+ },
+ {
+  "name": "str find case",
+  "template": "{{ 'Abc'.find('B') }}",
+  "data": {}
+ },
+ {
+  "name": "str count overlap avoid",
+  "template": "{{ 'aaa'.count('aa') }}",
+  "data": {}
+ },
+ {
+  "name": "str zfill already wide",
+  "template": "{{ 'abc'.zfill(2) }}",
+  "data": {}
+ },
+ {
+  "name": "str center same width",
+  "template": "{{ 'abc'.center(3) }}|",
+  "data": {}
+ },
+ {
+  "name": "str rpartition single char",
+  "template": "{{ 'ab'.rpartition('a') | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "recursive loop over strings",
+  "template": "{% for i in data recursive %}{{ i }}{{ loop(i) if false }}{% endfor %}",
+  "data": {
+   "data": "ab"
+  }
+ },
+ {
+  "name": "loop.changed with missing",
+  "template": "{% for x in [1] %}{{ loop.changed(missing) }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "for over dict keys sorted by dictsort",
+  "template": "{% for k, v in d | dictsort %}{{ k }}{{ v }}{% endfor %}",
+  "data": {
+   "d": {
+    "b": 2,
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "nested loop same target name",
+  "template": "{% for i in [1,2] %}{% for i in [3,4] %}{{ i }}{% endfor %}|{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop.index in recursive after nested",
+  "template": "{% for a in data recursive %}{{ loop.index }}{% for b in a.c | default([]) %}{{ b }}{% endfor %};{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      "x"
+     ]
+    },
+    {
+     "c": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "macro with default using filter",
+  "template": "{% macro m(a) %}{{ a | upper }}{% endmacro %}{{ m('x') }}",
+  "data": {}
+ },
+ {
+  "name": "macro param named varargs",
+  "template": "{% macro m(varargs) %}{{ varargs }}{% endmacro %}{{ m('v') }}",
+  "data": {}
+ },
+ {
+  "name": "macro param named kwargs",
+  "template": "{% macro m(kwargs) %}{{ kwargs }}{% endmacro %}{{ m('k') }}",
+  "data": {}
+ },
+ {
+  "name": "macro called with none",
+  "template": "{% macro m(a) %}{{ a is none }}{% endmacro %}{{ m(none) }}",
+  "data": {}
+ },
+ {
+  "name": "macro in set block",
+  "template": "{% set x %}{% macro m() %}M{% endmacro %}{{ m() }}{% endset %}{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "extends with dynamic name var",
+  "template": "{% extends t %}{% block b %}C{% endblock %}",
+  "data": {
+   "t": "base.html"
+  },
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "include with variable name",
+  "template": "{% include t %}",
+  "data": {
+   "t": "p.html"
+  },
+  "templates": {
+   "p.html": "P"
+  }
+ },
+ {
+  "name": "import with variable name",
+  "template": "{% import t as m %}{{ m.v }}",
+  "data": {
+   "t": "m.html"
+  },
+  "templates": {
+   "m.html": "{% set v = 'V' %}"
+  }
+ },
+ {
+  "name": "super usage without extends error",
+  "template": "{% block b %}{{ super() }}{% endblock %}",
+  "data": {}
+ },
+ {
+  "name": "marker only tag line",
+  "template": "a\n  {%- set x = 1 %}\nb{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "trim after comment tag",
+  "template": "a\n{# c #}\nb",
+  "data": {},
+  "env": {
+   "trim_blocks": false
+  }
+ },
+ {
+  "name": "lstrip var tag no effect",
+  "template": "x\n  {{ 1 }}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "markers nested for if",
+  "template": "{% for i in [1] -%}\n {%- if true -%}X{%- endif -%}\n{%- endfor %}",
+  "data": {}
+ },
+ {
+  "name": "float pow frac base",
+  "template": "{{ 0.5 ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "int overflow check add",
+  "template": "{{ 9223372036854775806 + 1 }}",
+  "data": {}
+ },
+ {
+  "name": "big compare negative",
+  "template": "{{ -9223372036854775807 - 1 < -9223372036854775807 }}",
+  "data": {}
+ },
+ {
+  "name": "mixed eq bool float",
+  "template": "{{ false == 0.0 }} {{ true == 1.0 }}",
+  "data": {}
+ },
+ {
+  "name": "div chain negatives",
+  "template": "{{ -8 / 4 / -1 }}",
+  "data": {}
+ },
+ {
+  "name": "nested namespaces",
+  "template": "{% set a = namespace(b=namespace(c=1)) %}{{ a.b.c }}",
+  "data": {}
+ },
+ {
+  "name": "dict key by variable",
+  "template": "{{ d[k] }}",
+  "data": {
+   "d": {
+    "x": 1
+   },
+   "k": "x"
+  }
+ },
+ {
+  "name": "tuple index negative",
+  "template": "{{ (1,2,3)[-2] }}",
+  "data": {}
+ },
+ {
+  "name": "markup compare markup",
+  "template": "{{ ('x' | safe) == ('x' | safe) }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "filter chain order preserved",
+  "template": "{{ ' a ' | trim | upper | length }}",
+  "data": {}
+ },
+ {
+  "name": "if with parenthesized or",
+  "template": "{% if (true or false) and true %}y{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "ternary in default arg",
+  "template": "{{ missing | default('a' if true else 'b') }}",
+  "data": {}
+ },
+ {
+  "name": "deep nested dicts access",
+  "template": "{{ a.b.c.d.e }}",
+  "data": {
+   "a": {
+    "b": {
+     "c": {
+      "d": {
+       "e": "deep"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "tojson with unicode key",
+  "template": "{{ {'k\u00e9': 1} | tojson }}",
+  "data": {}
  }
 ]
