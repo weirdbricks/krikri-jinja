@@ -10293,5 +10293,277 @@
   "name": "tojson with unicode key",
   "template": "{{ {'k\u00e9': 1} | tojson }}",
   "data": {}
+ },
+ {
+  "name": "sort dict returns keys",
+  "template": "{{ {'b': 1, 'a': 2} | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "unique on string",
+  "template": "{{ 'aba' | unique | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "reverse on tuple",
+  "template": "{{ (1, 2) | reverse | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "first on generator",
+  "template": "{{ [1,2] | map('string') | first }}",
+  "data": {}
+ },
+ {
+  "name": "last on generator",
+  "template": "{{ [1,2] | map('string') | last }}",
+  "data": {}
+ },
+ {
+  "name": "min on string chars",
+  "template": "{{ 'cba' | min }} {{ 'cba' | max }}",
+  "data": {}
+ },
+ {
+  "name": "sum on tuple",
+  "template": "{{ (1, 2.5) | sum }}",
+  "data": {}
+ },
+ {
+  "name": "length on range",
+  "template": "{{ range(5) | length }}",
+  "data": {}
+ },
+ {
+  "name": "list on range",
+  "template": "{{ range(3) | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "batch on string",
+  "template": "{% for r in 'abcde' | batch(2, '-') %}[{{ r | join }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "slice on string",
+  "template": "{% for c in 'abcd' | slice(3) %}[{{ c | join }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "select on tuple",
+  "template": "{{ (1,2,3) | select('even') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "undefined add rev",
+  "template": "{{ 1 + missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined mul rev",
+  "template": "{{ 2 * missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined pow rev",
+  "template": "{{ 2 ** missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined lt rev",
+  "template": "{{ missing < 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined ge rev",
+  "template": "{{ missing >= 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined in operator",
+  "template": "{{ missing in [1] }} {{ 1 in missing }}",
+  "data": {}
+ },
+ {
+  "name": "loop over empty string",
+  "template": "{% for c in '' %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop over empty tuple",
+  "template": "{% for x in () %}x{% else %}e{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop index0 in recursion",
+  "template": "{% for i in data recursive %}{{ loop.index0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "recursive with include",
+  "template": "{% for i in [1] recursive %}{% include 'p.html' %}{% endfor %}",
+  "data": {},
+  "templates": {
+   "p.html": "P{{ loop is defined }}"
+  }
+ },
+ {
+  "name": "for unpack tuple values",
+  "template": "{% for a, b in [(1, 2)] %}{{ a }}{{ b }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro kwargs default collision",
+  "template": "{% macro m(a=1, b=2) %}{{ a }}{{ b }}{% endmacro %}{{ m(b=9) }}",
+  "data": {}
+ },
+ {
+  "name": "macro positional fill skip",
+  "template": "{% macro m(a, b=2, c=3) %}{{ a }}{{ b }}{{ c }}{% endmacro %}{{ m(1, c=9) }}",
+  "data": {}
+ },
+ {
+  "name": "caller nested macro call",
+  "template": "{% macro outer() %}{{ caller() }}{% endmacro %}{% macro inner() %}{{ caller() }}{% endmacro %}{% call inner() %}X{% endcall %}{% call outer() %}Y{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "extends then include loop var",
+  "template": "{% extends 'base.html' %}{% block b %}{% for i in [1] %}{% include 'p.html' %}{% endfor %}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}{% endblock %}",
+   "p.html": "P{{ i }}"
+  }
+ },
+ {
+  "name": "block override with nested blocks",
+  "template": "{% extends 'base.html' %}{% block outer %}O{% block inner %}I{% endblock %}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block outer %}[{% block inner %}D{% endblock %}]{% endblock %}"
+  }
+ },
+ {
+  "name": "marker after tag name",
+  "template": "{% if true %}x{% endif -%}\ny",
+  "data": {}
+ },
+ {
+  "name": "var marker with newline before",
+  "template": "a\n{{- 'b' }}",
+  "data": {}
+ },
+ {
+  "name": "comment marker no strip",
+  "template": "a {#- c -#} b",
+  "data": {}
+ },
+ {
+  "name": "raw marker right only",
+  "template": "{% raw %}x{% endraw -%}\ny",
+  "data": {}
+ },
+ {
+  "name": "pow chain left",
+  "template": "{{ 3 ** 2 ** 1 }}",
+  "data": {}
+ },
+ {
+  "name": "neg zero pow",
+  "template": "{{ (-0.0) ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "big int to float",
+  "template": "{{ 9223372036854775807 + 0.0 }}",
+  "data": {}
+ },
+ {
+  "name": "float compare int huge",
+  "template": "{{ 1e18 == 1000000000000000000 }}",
+  "data": {}
+ },
+ {
+  "name": "mod chain float",
+  "template": "{{ 10.5 % 3 % 2 }}",
+  "data": {}
+ },
+ {
+  "name": "join markup items",
+  "template": "{{ ['<a>', 'b'] | join(',') }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "escape markup via filter chain",
+  "template": "{{ ('<x>' | safe) | trim | escape }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
+ },
+ {
+  "name": "tuple attr access via int",
+  "template": "{{ t[1] }}",
+  "data": {
+   "t": [
+    10,
+    20
+   ]
+  }
+ },
+ {
+  "name": "dict access with int via get",
+  "template": "{{ {1: 'a'}.get(1.0) }}",
+  "data": {}
+ },
+ {
+  "name": "if with is not in",
+  "template": "{% if 1 is not in [2] %}y{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "nested ternary chain deep",
+  "template": "{{ 'a' if false else 'b' if true else 'c' }}",
+  "data": {}
+ },
+ {
+  "name": "set conditional tuple",
+  "template": "{% set x = (1, 2) if true else (3,) %}{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "deep method chain on literal",
+  "template": "{{ 'x-y'.split('-')[1].upper() }}",
+  "data": {}
+ },
+ {
+  "name": "loop var in included template target",
+  "template": "{% for n in [1,2] %}{% include 'p.html' %}{% endfor %}",
+  "data": {},
+  "templates": {
+   "p.html": "{{ n }}"
+  }
+ },
+ {
+  "name": "macro call in dict value",
+  "template": "{% macro m() %}v{% endmacro %}{{ {'k': m()} }}",
+  "data": {},
+  "env": {
+   "autoescape": false
+  }
  }
 ]
