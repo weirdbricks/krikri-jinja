@@ -762,12 +762,21 @@ module KrikriJinja
             raise TemplateError.new("expected filter name after '|'", name_tok.line)
           end
           advance
+          fname = name_tok.value
+          # jinja parses dotted names as one filter name (which then fails
+          # lookup): `x | first.to_s` is "No filter named 'first.to_s'"
+          while current.type == TokenType::Op && current.value == "." &&
+                peek(1).type == TokenType::Ident
+            advance
+            fname += ".#{current.value}"
+            advance
+          end
           args = [] of ExprNode
           kwargs = [] of Tuple(String, ExprNode)
           if accept_op("(")
             args, kwargs = parse_call_args_until_close
           end
-          expr = Nodes::FilterNode.new(name_tok.value, args, kwargs, expr, line)
+          expr = Nodes::FilterNode.new(fname, args, kwargs, expr, line)
         else
           break
         end
