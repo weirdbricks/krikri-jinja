@@ -8381,5 +8381,316 @@
   "name": "multiline expression in var",
   "template": "{{\n 1 +\n 2\n}}",
   "data": {}
+ },
+ {
+  "name": "map default pos kwarg mix",
+  "template": "{{ users | map(attribute='a', 'x') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "a": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "batch zero",
+  "template": "{{ [1] | batch(0) | length }}",
+  "data": {}
+ },
+ {
+  "name": "slice one",
+  "template": "{% for c in [1,2] | slice(1) %}[{{ c | join(',') }}]{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "truncate zero end",
+  "template": "{{ 'abcd' | truncate(2, true, '', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "wordwrap width exact",
+  "template": "{{ 'ab cd' | wordwrap(5) }}|",
+  "data": {}
+ },
+ {
+  "name": "round prec bool",
+  "template": "{{ 1.6 | round(precision=0) }}",
+  "data": {}
+ },
+ {
+  "name": "filesizeformat base2 kwarg",
+  "template": "{{ 2048 | filesizeformat(true) }} {{ 2048 | filesizeformat(false) }}",
+  "data": {}
+ },
+ {
+  "name": "urlencode for_qs kwarg",
+  "template": "{{ {'a': 'b/c'} | urlencode(for_qs=true) }}",
+  "data": {}
+ },
+ {
+  "name": "default boolean pos",
+  "template": "{{ 0 | default('d', true) }} {{ '' | default('d', true) }}",
+  "data": {}
+ },
+ {
+  "name": "indent width kwarg",
+  "template": "{{ 'a\\nb' | indent(width=1, first=true) }}|",
+  "data": {}
+ },
+ {
+  "name": "int default kwarg",
+  "template": "{{ 'zz' | int(default=3) }}",
+  "data": {}
+ },
+ {
+  "name": "float default kwarg",
+  "template": "{{ 'zz' | float(default=1.5) }}",
+  "data": {}
+ },
+ {
+  "name": "recursive loop index reset",
+  "template": "{% for i in data recursive %}{{ loop.index }}{{ loop(i.c) if i.c }}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {
+       "c": []
+      }
+     ]
+    },
+    {
+     "c": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "loop depth after recursive call",
+  "template": "{% for i in data recursive %}{{ loop.depth }}{% for j in i.c %}{{ loop.depth }}{% endfor %}{% endfor %}",
+  "data": {
+   "data": [
+    {
+     "c": [
+      {}
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "for over generator with test",
+  "template": "{% for x in [1,2,3] | select('odd') %}{{ x }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop cycle arg mismatch",
+  "template": "{% for i in [1] %}{{ loop.cycle() }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "loop changed no args",
+  "template": "{% for i in [1] %}{{ loop.changed() }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "macro default undefined expr",
+  "template": "{% macro m(a=missing | default('d')) %}{{ a }}{% endmacro %}{{ m() }}",
+  "data": {}
+ },
+ {
+  "name": "macro kwargs merge order",
+  "template": "{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(1, b=2) }}",
+  "data": {}
+ },
+ {
+  "name": "macro varargs spread call",
+  "template": "{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(*[1, 2]) }}",
+  "data": {}
+ },
+ {
+  "name": "caller inside caller",
+  "template": "{% macro outer() %}{{ caller() }}{% endmacro %}{% call outer() %}x{% endcall %}",
+  "data": {}
+ },
+ {
+  "name": "macro defined in loop scope",
+  "template": "{% for i in [1,2] %}{% if i == 1 %}{% macro m() %}M1{% endmacro %}{% endif %}{{ m() }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "extends after content error",
+  "template": "x{% extends 'base.html' %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "block required empty ok",
+  "template": "{% extends 'base.html' %}{% block b required %}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block b %}D{% endblock %}"
+  }
+ },
+ {
+  "name": "include recursive self safe",
+  "template": "{% include 'a.html' %}",
+  "data": {},
+  "templates": {
+   "a.html": "A{% set stop = true %}"
+  }
+ },
+ {
+  "name": "child block without parent block",
+  "template": "{% extends 'base.html' %}{% block other %}O{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "B"
+  }
+ },
+ {
+  "name": "super in second block",
+  "template": "{% extends 'base.html' %}{% block a %}{{ super() }}{% endblock %}{% block b %}{{ super() }}{% endblock %}",
+  "data": {},
+  "templates": {
+   "base.html": "{% block a %}A{% endblock %}{% block b %}B{% endblock %}"
+  }
+ },
+ {
+  "name": "marker on endif nested",
+  "template": "{% if true %}a\n{%- endif %}b",
+  "data": {}
+ },
+ {
+  "name": "lstrip marker plus",
+  "template": "x\n  {%+ if true %}y{% endif %}",
+  "data": {},
+  "env": {
+   "lstrip_blocks": true
+  }
+ },
+ {
+  "name": "trim after var tag",
+  "template": "{{ 'x' }}\ny",
+  "data": {},
+  "env": {
+   "trim_blocks": true
+  }
+ },
+ {
+  "name": "marker in nested blocks",
+  "template": "{% if true -%}\n{% for i in [1] -%}\n{{ i }}\n{%- endfor %}\n{%- endif %}",
+  "data": {}
+ },
+ {
+  "name": "pow right assoc check",
+  "template": "{{ 2 ** 2 ** 3 }}",
+  "data": {}
+ },
+ {
+  "name": "float eq bool",
+  "template": "{{ 1.0 == true }} {{ 0.0 == false }}",
+  "data": {}
+ },
+ {
+  "name": "neg zero equal",
+  "template": "{{ -0 == 0 }} {{ -0.0 == 0.0 }}",
+  "data": {}
+ },
+ {
+  "name": "div negative float",
+  "template": "{{ -7 / 2 }}",
+  "data": {}
+ },
+ {
+  "name": "mod zero float",
+  "template": "{{ 1 % 0.0 }}",
+  "data": {}
+ },
+ {
+  "name": "comparison mixed tuple",
+  "template": "{{ (1,) < (2,) }} {{ (2,) < (1,) }}",
+  "data": {}
+ },
+ {
+  "name": "in on markup",
+  "template": "{{ 'a' in ('abc' | safe) }}",
+  "data": {}
+ },
+ {
+  "name": "unknown filter error",
+  "template": "{{ 1 | nosuchfilter }}",
+  "data": {}
+ },
+ {
+  "name": "unknown test error",
+  "template": "{{ 1 is nosuchtest }}",
+  "data": {}
+ },
+ {
+  "name": "unknown global error",
+  "template": "{{ nosuchglobal() }}",
+  "data": {}
+ },
+ {
+  "name": "include missing no ignore",
+  "template": "{% include 'nope.html' %}",
+  "data": {}
+ },
+ {
+  "name": "import missing error",
+  "template": "{% import 'nope.html' as m %}",
+  "data": {}
+ },
+ {
+  "name": "div by zero error",
+  "template": "{{ 1 / 0 }}",
+  "data": {}
+ },
+ {
+  "name": "mod by zero error",
+  "template": "{{ 1 % 0 }}",
+  "data": {}
+ },
+ {
+  "name": "self reference in set",
+  "template": "{% set x = 1 %}{% set x = x + 1 %}{{ x }}",
+  "data": {}
+ },
+ {
+  "name": "dict in dict in list repr",
+  "template": "{{ [{'a': {'b': [1]}}] }}",
+  "data": {}
+ },
+ {
+  "name": "markup concat in tuple",
+  "template": "{{ ('<a>' | safe) ~ ('<b>' | safe) }}",
+  "data": {},
+  "env": {
+   "autoescape": true
+  }
+ },
+ {
+  "name": "nested filter args with filters",
+  "template": "{{ 'aXb' | replace('X', 'y' | upper) }}",
+  "data": {}
+ },
+ {
+  "name": "deep ternary chain",
+  "template": "{{ 'a' if false else 'b' if false else 'c' }}",
+  "data": {}
+ },
+ {
+  "name": "loop var name shadow global",
+  "template": "{% set loop = 'x' %}{{ loop | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "macro name reuse across blocks",
+  "template": "{% block a %}{% macro m() %}M{% endmacro %}{{ m() }}{% endblock %}{% block b %}{% macro m() %}N{% endmacro %}{{ m() }}{% endblock %}",
+  "data": {}
  }
 ]
