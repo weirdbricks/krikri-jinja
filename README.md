@@ -94,10 +94,10 @@ the outputs byte for byte:
 
 ```bash
 ./compare/run.sh
-# total: 1,972  identical: 1,736  both-error: 236  divergent: 0
+# total: 1,990  identical: 1,749  both-error: 241  divergent: 0
 ```
 
-- `compare/gen_cases.py` generates `cases.json` (1,972 cases: literals,
+- `compare/gen_cases.py` generates `cases.json` (1,990 cases: literals,
   arbitrary-precision arithmetic, filters, tests, statements, string and
   integer methods, whitespace control, raw blocks, inheritance/includes/
   imports, autoescape, recursive loops, and fuzz-class regressions)
@@ -128,7 +128,7 @@ parsing, and the constant-folding precedence trap for negative-literal-base
 ## Development
 
 ```bash
-crystal spec        # run the unit/integration suite (184 specs)
-./compare/run.sh    # differential test against real Jinja2 (1,972 cases)
+crystal spec        # run the unit/integration suite (193 specs)
+./compare/run.sh    # differential test against real Jinja2 (1,990 cases)
 ./compare/fuzz_run.sh 8 3000 1000  # 8 fuzz rounds, starting at seed 1001
 ```

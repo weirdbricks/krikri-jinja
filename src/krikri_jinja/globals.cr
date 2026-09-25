@@ -76,16 +76,20 @@ module KrikriJinja
   BUILTIN_GLOBALS = {} of String => AnyValue
 
   BUILTIN_GLOBALS["range"] = AnyValue.new(SimpleCallable.new("range") do |args, _kwargs, _ctx|
-    coerced = args.map { |arg| arg.raw.is_a?(Bool) ? AnyValue.new(arg.raw.as(Bool) ? 1i64 : 0i64) : arg }
-    start, stop, step = if coerced.size == 1
-                          {0i64, coerced[0].raw.as?(Int64) || 0i64, 1i64}
-                        elsif coerced.size >= 2
-                          {coerced[0].raw.as?(Int64) || 0i64, coerced[1].raw.as?(Int64) || 0i64,
-                           coerced.size >= 3 ? (coerced[2].raw.as?(Int64) || 1i64) : 1i64}
+    raise TemplateError.new("range expects 1-3 arguments", 0) unless args.size.in?(1..3)
+    values = args.map do |arg|
+      case raw = arg.raw
+      when Int64 then raw
+      when Bool then raw ? 1i64 : 0i64
+      else
+        raise TemplateError.new("'#{raw.class}' object cannot be interpreted as an integer", 0)
+      end
+    end
+    start, stop, step = if values.size == 1
+                          {0i64, values[0], 1i64}
                         else
-                          raise TemplateError.new("range expects 1-3 arguments", 0)
+                          {values[0], values[1], values.size == 3 ? values[2] : 1i64}
                         end
-    raise TemplateError.new("'float' object cannot be interpreted as an integer", 0) if args.any?(&.raw.is_a?(Float64))
     raise TemplateError.new("range step cannot be zero", 0) if step == 0
     result = [] of AnyValue
     if step > 0

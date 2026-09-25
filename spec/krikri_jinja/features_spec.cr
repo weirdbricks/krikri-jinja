@@ -37,6 +37,11 @@ describe KrikriJinja do
       opts = KrikriJinja::LexerOptions.new(var_start: "((", var_end: "))", block_start: "(%", block_end: "%)")
       KrikriJinja::Engine.new(nil, options: opts).render_string("(% if true %)(( 1 + 1 ))(% endif %)").should eq("2")
     end
+
+    it "supports custom comment delimiters" do
+      opts = KrikriJinja::LexerOptions.new(comment_start: "<!--", comment_end: "-->")
+      KrikriJinja::Engine.new(nil, options: opts).render_string("a<!-- hidden -->b").should eq("ab")
+    end
   end
 
   describe "loop extras" do
@@ -70,6 +75,11 @@ describe KrikriJinja do
     it "leaves name undefined inside macro body (jinja parity)" do
       t = "{% macro m() %}[{{ name }}]{% endmacro %}{{ m() }}"
       KrikriJinja.render(t).should eq("[]")
+    end
+
+    it "expands keyword dictionaries into macro calls" do
+      t = "{% macro m(a, b=0) %}{{ a }}|{{ b }}|{{ kwargs['x'] }}{% endmacro %}{{ m(**d) }}"
+      KrikriJinja.render(t, {"d" => {"a" => 1, "b" => 2, "x" => 3}}).should eq("1|2|3")
     end
 
     it "passes call-tag parameters to the caller body" do
@@ -133,6 +143,18 @@ describe KrikriJinja do
       KrikriJinja.render("{{ items | select('string') | join(',') }}", ctx).should eq("a,b")
     end
 
+    it "matches keyword filter and test behavior" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1,2,3] | map(filter='string') | join(',') }}")
+      end
+      KrikriJinja.render("{{ [1,2,3,4] | select(test='odd') | join(',') }}").should eq("1,2,3,4")
+    end
+
+    it "returns deterministic values for singleton random inputs" do
+      KrikriJinja.render("{{ [1] | random }} {{ 'a' | random }} {{ [7] | random }}")
+        .should eq("1 a 7")
+    end
+
     it "safe/escape survive autoescape" do
       engine = KrikriJinja::Engine.new(nil, autoescape: true)
       engine.render_string("{{ v }}|{{ v | safe }}|{{ v | escape }}", {"v" => "<b>"} of String => KrikriJinja::AnyV)
@@ -156,6 +178,18 @@ describe KrikriJinja do
         .should eq("False True False")
     end
 
+    it "supports true and false tests" do
+      KrikriJinja.render("{{ true is true }} {{ false is true }} {{ none is true }}")
+        .should eq("True False False")
+      KrikriJinja.render("{{ false is false }} {{ true is false }} {{ true is not false }}")
+        .should eq("True False True")
+    end
+
+    it "supports the default filter alias" do
+      KrikriJinja.render("{{ missing | d('fallback') }} {{ missing | d }}")
+        .should eq("fallback ")
+    end
+
     it "rejects required blocks with a body (jinja raises)" do
       expect_raises(KrikriJinja::TemplateError) do
         KrikriJinja.render("{% block a scoped required %}x{% endblock %}")
@@ -167,6 +201,26 @@ describe KrikriJinja do
     it "renders named templates" do
       engine = KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"t.html" => "hi {{ n }}"} of String => String))
       engine.render("t.html", {"n" => "you"} of String => KrikriJinja::AnyV).should eq("hi you")
+    end
+
+    it "provides user-defined globals" do
+      engine = KrikriJinja::Engine.new(nil, {"site" => "example"} of String => KrikriJinja::AnyV)
+      engine.render_string("{{ site }}").should eq("example")
+    end
+
+    it "keeps FileSystemLoader reads inside its root" do
+      root = File.tempname
+      sibling = "#{root}_sibling"
+      Dir.mkdir(root)
+      Dir.mkdir(sibling)
+      secret = File.join(sibling, "secret.txt")
+      File.write(secret, "secret")
+      loader = KrikriJinja::FileSystemLoader.new(root)
+      loader.get_source("../#{File.basename(sibling)}/secret.txt").should be_nil
+    ensure
+      File.delete(secret) if secret && File.exists?(secret)
+      Dir.delete(sibling) if sibling && Dir.exists?(sibling)
+      Dir.delete(root) if root && Dir.exists?(root)
     end
 
     it "allows registering custom filters and tests" do

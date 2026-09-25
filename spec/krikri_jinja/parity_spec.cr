@@ -244,6 +244,15 @@ describe KrikriJinja do
       end
     end
 
+    it "rejects invalid range arity and string steps" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% for i in range(1, 3, '2') %}{{ i }}{% endfor %}")
+      end
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% for i in range(1, 3, 1, 9) %}{{ i }}{% endfor %}")
+      end
+    end
+
     it "builds dicts from tuples" do
       KrikriJinja.render("{{ dict([('a', 1), ('b', 2)]) | dictsort | join(',') }}").should eq("('a', 1),('b', 2)")
     end

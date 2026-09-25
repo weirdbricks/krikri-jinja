@@ -90,7 +90,7 @@ module KrikriJinja
 
     def get_source(name : String) : String?
       path = File.expand_path(name, @root_path)
-      return nil unless path.starts_with?(@root_path)
+      return nil unless path == @root_path || path.starts_with?(@root_path + File::SEPARATOR)
       File.read(path) if File.file?(path)
     end
   end
