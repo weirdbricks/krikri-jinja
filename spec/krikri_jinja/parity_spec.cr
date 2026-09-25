@@ -541,6 +541,46 @@ y")
       end
     end
   end
+
+  describe "parity: round 12" do
+    it "renders top-level text before extends, drops content after" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"base.html" => "{% block b %}B{% endblock %}"}))
+        .render_string("x{% extends 'base.html' %}", KrikriJinja.context({} of String => String)).should eq("xB")
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({"base.html" => "S{% block b %}D{% endblock %}E"}))
+        .render_string("{% extends 'base.html' %}{% block b %}{% endblock %}tail",
+          KrikriJinja.context({} of String => String)).should eq("SE")
+    end
+
+    it "scopes macros defined inside if/for bodies to that frame" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% for i in [1,2] %}{% if i == 1 %}{% macro m() %}M1{% endmacro %}{% endif %}{{ m() }}{% endfor %}")
+      end
+      KrikriJinja.render("{% if true %}{% macro m() %}M{% endmacro %}{{ m() }}{% endif %}").should eq("M")
+    end
+
+    it "supports *args and **kwargs call spreading" do
+      KrikriJinja.render("{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(*[1, 2]) }}").should eq("12")
+    end
+
+    it "rejects positional arguments after keyword arguments" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1] | map(attribute='a', 'x') | join(',') }}", {"users" => [{"a" => 1}]})
+      end
+    end
+
+    it "batch yields generators without fill, lists with fill" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1] | batch(0) | length }}")
+      end
+      KrikriJinja.render("{{ [1,2,3] | batch(2, 0) | length }}").should eq("2")
+    end
+
+    it "rejects urlencode keyword arguments" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ {'a': 'b/c'} | urlencode(for_qs=true) }}")
+      end
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
