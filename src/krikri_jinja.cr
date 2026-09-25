@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.8"
+  VERSION = "0.4.9"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -261,6 +261,20 @@ module KrikriJinja
 
   def self.default_engine : Engine
     @@default_engine ||= Engine.new
+  end
+
+  # Builds an engine that inherits the shared default engine's registered
+  # filters, tests, and globals, with the caller's loader, lexer options, and
+  # undefined behavior. Use this instead of `Engine.new` when host extensions
+  # must stay visible (for example a .j2 render with its own loader).
+  def self.derive_engine(loader : Loader? = nil, options : LexerOptions = LexerOptions.new,
+                         undefined : Undefined = Undefined.new,
+                         host_context : HostContext? = nil) : Engine
+    copy = Engine.new(loader, {} of String => AnyV, options, false, undefined, host_context)
+    default_engine.globals.each { |key, value| copy.globals[key] = value }
+    default_engine.filters.each { |key, value| copy.filters[key] = value }
+    default_engine.tests.each { |key, value| copy.tests[key] = value }
+    copy
   end
 
   def self.reset_default_engine : Engine
