@@ -606,6 +606,13 @@ module KrikriJinja
       end
       name = tok.value
       advance
+      # jinja reads a dotted test name as one name, like a filter's
+      while current.type == TokenType::Op && current.value == "." &&
+            peek(1).type == TokenType::Ident
+        advance
+        name += ".#{current.value}"
+        advance
+      end
       if current.type == TokenType::Ident && current.value == "is"
         raise TemplateError.new("You cannot chain multiple tests with is", current.line)
       end

@@ -449,6 +449,36 @@ module KrikriJinja
       render_variables(source, variables)
     end
 
+    # Evaluates an already-parsed expression. `resolver` supplies any
+    # variable that `variables` does not define, on first use. `undefined`
+    # and `host_context` override the engine's own for this call only, so
+    # one engine (and its registered features) serves every caller.
+    def evaluate_parsed(expression : Nodes::ExprNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
+                        resolver : VariableResolver? = nil,
+                        undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : AnyValue
+      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx.host_context = host_context
+      ctx.resolver = resolver
+      variables.each { |key, value| ctx[key] = value }
+      Evaluator.new(ctx, self).eval(expression)
+    rescue error : TemplateError
+      raise error
+    rescue error
+      raise TemplateError.new(error.message || "expression evaluation failed", 0, kind: ErrorKind::Runtime, operation: "evaluate")
+    end
+
+    # Renders an already-parsed template. `resolver` supplies any variable
+    # that `variables` does not define, on first use.
+    def render_parsed(node : Nodes::TemplateNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
+                      resolver : VariableResolver? = nil,
+                      undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : String
+      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx.host_context = host_context
+      ctx.resolver = resolver
+      variables.each { |key, value| ctx[key] = value }
+      Evaluator.new(ctx, self).render_template(node)
+    end
+
     def render_string(source : String, variables : Hash(String, AnyValue)) : String
       render_variables(source, variables)
     end
@@ -923,6 +953,7 @@ module KrikriJinja
       sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
       sub_ctx.host_context = @ctx.host_context
       if node.context
+        sub_ctx.resolver = @ctx.resolver
         # {% import ... with context %}: the imported module resolves names
         # against the importing template's visible (non-loop) variables.
         @ctx.scopes.reverse_each do |scope|
