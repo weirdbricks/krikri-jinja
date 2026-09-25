@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.2)
+## Status (v0.4.3)
 
 Implemented:
 
@@ -131,6 +131,39 @@ values and deep-converts nested arrays and hashes. `known_filter?` and
 `known_test?` support compile-time feature checks. `TemplateError#to_json`
 returns a structured error object containing its kind, message, line, and
 optional operation or template metadata.
+
+### Shared default engine
+
+Callers that do not want to build and pass an engine at every call site can
+register extensions once on the engine shared by the module-level `render`,
+`evaluate_expression`, and `evaluate_expression_result` helpers:
+
+```crystal
+KrikriJinja.register_default_json_filter("exclaim") do |value, _args, _kwargs|
+  JSON::Any.new("#{value.as_s}!")
+end
+KrikriJinja.render("{{ 'hello' | exclaim }}") # => "hello!"
+```
+
+`register_default_test`, `register_default_filter`, `register_default_json_test`,
+`register_default_json_function`, `register_default_function`, `register_default_global`,
+and `register_default_loader_function` mirror their `Engine` counterparts;
+`default_known_filter?` / `default_known_test?` and `reset_default_engine` round
+out the surface. Each call to `evaluate_expression` still gets its own engine,
+derived from the default one, so per-call `strict:` and `loader:` arguments keep
+working and cannot leak state into the shared engine.
+
+### Undefined versus null
+
+`evaluate_expression` returns `nil` both for a JSON `null` result and for an
+undefined expression under lenient undefined. Callers that must tell those
+apart (for strict-conditional semantics) use `evaluate_expression_result`:
+
+```crystal
+KrikriJinja.evaluate_expression_result("missing").undefined? # => true
+KrikriJinja.evaluate_expression_result("none").undefined?    # => false
+KrikriJinja.evaluate_expression_result("none").value.to_json # => "null"
+```
 
 ## Differential testing against real Jinja2
 

@@ -335,6 +335,14 @@ module KrikriJinja
       @tests = BUILTIN_TESTS.dup
     end
 
+    def with_undefined(undefined : Undefined) : Engine
+      copy = Engine.new(@loader, {} of String => AnyV, @options, @autoescape, undefined)
+      @globals.each { |key, value| copy.globals[key] = value }
+      @filters.each { |key, value| copy.filters[key] = value }
+      @tests.each { |key, value| copy.tests[key] = value }
+      copy
+    end
+
     def register_filter(name : String, &block : FilterFn) : self
       @filters[name.downcase] = block
       self

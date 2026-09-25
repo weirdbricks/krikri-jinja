@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.2"
+  VERSION = "0.4.3"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -183,6 +183,7 @@ module KrikriJinja
   def self.wrap_value(x) : AnyValue
     case v = x
     when AnyValue then v
+    when JSON::Any then from_json_any(v)
     when Array    then AnyValue.new(v.map { |e| wrap_value(e) })
     when Hash
       h = {} of String => AnyValue
@@ -237,29 +238,118 @@ module KrikriJinja
     result
   end
 
+  # Distinguishes an undefined expression result from an expression that
+  # legitimately evaluated to JSON null. `evaluate_expression` cannot make
+  # that distinction on its own, because both surface as nil.
+  struct ExpressionResult
+    getter value : JSON::Any?
+    getter undefined : Bool
+
+    def initialize(@value : JSON::Any?, @undefined : Bool)
+    end
+
+    def undefined? : Bool
+      @undefined
+    end
+  end
+
+  # The engine used by the module-level convenience APIs (`render`,
+  # `evaluate_expression`, ...). Callers that need Ansible-style filters,
+  # tests, functions, or globals can register them once here instead of
+  # building and configuring a private engine at every call site.
+  @@default_engine : Engine? = nil
+
+  def self.default_engine : Engine
+    @@default_engine ||= Engine.new
+  end
+
+  def self.reset_default_engine : Engine
+    @@default_engine = Engine.new
+  end
+
+  def self.register_default_filter(name : String, &block : FilterFn) : Engine
+    default_engine.register_filter(name, &block)
+  end
+
+  def self.register_default_test(name : String, &block : TestFn) : Engine
+    default_engine.register_test(name, &block)
+  end
+
+  def self.register_default_json_filter(name : String, &block : JsonFilterFn) : Engine
+    default_engine.register_json_filter(name, &block)
+  end
+
+  def self.register_default_json_test(name : String, &block : JsonTestFn) : Engine
+    default_engine.register_json_test(name, &block)
+  end
+
+  def self.register_default_function(name : String, &block : FunctionFn) : Engine
+    default_engine.register_function(name, &block)
+  end
+
+  def self.register_default_json_function(name : String, &block : JsonFunctionFn) : Engine
+    default_engine.register_json_function(name, &block)
+  end
+
+  def self.register_default_global(name : String, value) : Engine
+    default_engine.register_global(name, value)
+  end
+
+  def self.register_default_loader_function(name : String, template_name : String) : Engine
+    default_engine.register_loader_function(name, template_name)
+  end
+
+  def self.default_known_filter?(name : String) : Bool
+    default_engine.known_filter?(name)
+  end
+
+  def self.default_known_test?(name : String) : Bool
+    default_engine.known_test?(name)
+  end
+
+  private def self.default_expression_engine(strict : Bool, loader : Loader?) : Engine
+    return Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new) if loader
+    default_engine.with_undefined(strict ? StrictUndefined.new : Undefined.new)
+  end
+
   def self.parse_expression(source : String, options : LexerOptions = LexerOptions.new) : Nodes::ExprNode
     Parser.parse_expression(source, options)
   end
 
   def self.evaluate_expression(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
                                strict : Bool = false, loader : Loader? = nil) : JSON::Any?
-    Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new).evaluate_json(source, variables)
+    default_expression_engine(strict, loader).evaluate_json(source, variables)
+  end
+
+  # Like `evaluate_expression`, but reports undefined results explicitly so
+  # callers can tell them apart from a JSON null value.
+  def self.evaluate_expression_result(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
+                                      strict : Bool = false, loader : Loader? = nil) : ExpressionResult
+    value = default_expression_engine(strict, loader)
+      .evaluate_expression(source, variables.transform_values { |item| from_json_any(item) })
+    if value.raw.is_a?(Undefined)
+      ExpressionResult.new(nil, true)
+    else
+      ExpressionResult.new(to_json_any(value), false)
+    end
   end
 
   def self.evaluate_expression_value(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
                                      strict : Bool = false, loader : Loader? = nil) : AnyValue
-    Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new).evaluate_expression(
+    default_expression_engine(strict, loader).evaluate_expression(
       source, variables.transform_values { |item| from_json_any(item) }
     )
   end
 
   def self.render(source : String, variables : Hash(String, V) = {} of String => String,
                   loader : Loader? = nil) : String forall V
-    Engine.new(loader).render_string(source, context(variables))
+    engine = loader ? Engine.new(loader) : default_engine
+    engine.render_string(source, context(variables))
   end
 
   def self.render(source : String, variables : Hash(String, AnyValue),
                   loader : Loader? = nil) : String
-    Engine.new(loader).render_string(source, variables)
+    engine = loader ? Engine.new(loader) : default_engine
+    engine.render_string(source, variables)
   end
 end
