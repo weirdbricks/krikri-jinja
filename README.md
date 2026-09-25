@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.4)
+## Status (v0.4.5)
 
 Implemented:
 
@@ -180,6 +180,9 @@ every registered filter, test, and function it invokes, including inside
 includes, imports, and macros.
 
 ### Undefined versus null
+
+Strict-undefined failures now name the variable that was missing
+("'missing_thing' is undefined"), matching real Ansible's own message.
 
 `evaluate_expression` returns `nil` both for a JSON `null` result and for an
 undefined expression under lenient undefined. Callers that must tell those

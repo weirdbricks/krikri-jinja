@@ -49,6 +49,11 @@ module KrikriJinja
   # Marker for undefined variables, mirroring Jinja's Undefined behavior:
   # stringifies to "", is falsy, fails `is none`, and raises on operations.
   class Undefined
+    property name : String?
+
+    def initialize(@name : String? = nil)
+    end
+
     def strict? : Bool
       false
     end
@@ -66,6 +71,12 @@ module KrikriJinja
     def strict? : Bool
       true
     end
+  end
+
+  # The message real Jinja2/Ansible reports names the variable that was
+  # missing; fall back to a generic word when the name is unknown.
+  def self.undefined_message(value : Undefined) : String
+    "'#{value.name || "missing"}' is undefined"
   end
 
   # Lazily-evaluated filter results (map/select/selectattr and friends);

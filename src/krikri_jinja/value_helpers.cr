@@ -3,7 +3,7 @@ module KrikriJinja
   def self.truthy?(value : AnyValue) : Bool
     case v = value.raw
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
       false
     when Nil then false
     when Bool then v
@@ -26,7 +26,7 @@ module KrikriJinja
   def self.stringify(value : AnyValue, escape : Bool = false) : String
     s = case v = value.raw
         when Undefined
-          raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
+          raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
           ""
         when Nil        then "None"
         when Bool       then v ? "True" : "False"
@@ -94,7 +94,7 @@ module KrikriJinja
     case v = value.raw
     when String then py_repr_string(v)
     when Undefined
-      raise TemplateError.new("'missing' is undefined", 0, kind: ErrorKind::Undefined) if v.strict?
+      raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
       "Undefined"
     when Markup then "Markup(#{py_repr_string(v.value)})"
     else stringify(value)
