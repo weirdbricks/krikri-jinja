@@ -42,12 +42,22 @@ module KrikriJinja
   # Marker for undefined variables, mirroring Jinja's Undefined behavior:
   # stringifies to "", is falsy, fails `is none`, and raises on operations.
   class Undefined
+    def strict? : Bool
+      false
+    end
+
     def ==(other : Undefined) : Bool
       true
     end
 
     def ==(other) : Bool
       false
+    end
+  end
+
+  class StrictUndefined < Undefined
+    def strict? : Bool
+      true
     end
   end
 

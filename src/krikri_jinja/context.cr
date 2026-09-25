@@ -3,6 +3,7 @@ module KrikriJinja
     getter scopes : Array(Hash(String, AnyValue))
     getter globals : Hash(String, AnyValue)
     property autoescape : Bool
+    property undefined : Undefined
     getter loader : Loader?
     property blocks : Hash(String, Array(Nodes::BlockNode))
     property hide_locals : Bool
@@ -13,7 +14,8 @@ module KrikriJinja
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
-                   @autoescape = false)
+                   @autoescape = false,
+                   @undefined : Undefined = Undefined.new)
       @scopes = [{} of String => AnyValue]
       @blocks = {} of String => Array(Nodes::BlockNode)
       @scope_is_local = [false]
@@ -25,7 +27,7 @@ module KrikriJinja
     end
 
     def [](name : String) : AnyValue
-      (v = self[name]?) ? v : AnyValue.new(Undefined.new)
+      (v = self[name]?) ? v : AnyValue.new(@undefined)
     end
 
     def []?(name : String) : AnyValue?
@@ -37,7 +39,7 @@ module KrikriJinja
           return value
         end
       end
-      return AnyValue.new(Undefined.new) if @hide_loop_var && name == "loop"
+      return AnyValue.new(@undefined) if @hide_loop_var && name == "loop"
       @globals[name]?
     end
 

@@ -24,7 +24,9 @@ module KrikriJinja
 
   def self.stringify(value : AnyValue, escape : Bool = false) : String
     s = case v = value.raw
-        when Undefined  then ""
+        when Undefined
+          raise TemplateError.new("'missing' is undefined", 0) if v.strict?
+          ""
         when Nil        then "None"
         when Bool       then v ? "True" : "False"
         when Int64      then v.to_s
@@ -90,7 +92,9 @@ module KrikriJinja
   def self.stringify_repr(value : AnyValue) : String
     case v = value.raw
     when String then py_repr_string(v)
-    when Undefined then "Undefined"
+    when Undefined
+      raise TemplateError.new("'missing' is undefined", 0) if v.strict?
+      "Undefined"
     when Markup then "Markup(#{py_repr_string(v.value)})"
     else stringify(value)
     end
