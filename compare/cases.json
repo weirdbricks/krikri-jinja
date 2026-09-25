@@ -11187,5 +11187,331 @@
   "name": "loop var after recursive",
   "template": "{% for i in [1] recursive %}{% endfor %}{{ loop | default('d') }}",
   "data": {}
+ },
+ {
+  "name": "p1",
+  "template": "{{ 1 + 2 * 3 }} {{ 2 ** 3 }} {{ 10 % 3 }} {{ 7 // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "p2",
+  "template": "{{ 'abc' | upper }} {{ 'ABC' | lower }} {{ 'a b' | title }}",
+  "data": {}
+ },
+ {
+  "name": "p3",
+  "template": "{{ [3,1,2] | sort | join(',') }} {{ [1,2,3] | sum }} {{ [1,2] | first }}",
+  "data": {}
+ },
+ {
+  "name": "p4",
+  "template": "{{ d.a }} {{ d['b'] }} {{ d.c | default('x') }}",
+  "data": {
+   "d": {
+    "a": 1,
+    "b": 2
+   }
+  }
+ },
+ {
+  "name": "p5",
+  "template": "{% for i in [1,2,3] %}{{ loop.index }}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "p6",
+  "template": "{% if 1 < 2 %}y{% else %}n{% endif %}",
+  "data": {}
+ },
+ {
+  "name": "p7",
+  "template": "{{ x ~ y }}",
+  "data": {
+   "x": "a",
+   "y": 1
+  }
+ },
+ {
+  "name": "p8",
+  "template": "{{ [1,2] | join('-') }} {{ {'a': 1} | length }}",
+  "data": {}
+ },
+ {
+  "name": "p9",
+  "template": "{% set x = 5 %}{{ x + 1 }}",
+  "data": {}
+ },
+ {
+  "name": "p10",
+  "template": "{{ 'a,b' | replace(',', '-') }}",
+  "data": {}
+ },
+ {
+  "name": "p11",
+  "template": "{{ [1,2,3] | reverse | join(',') }} {{ [2,1] | min }} {{ [2,1] | max }}",
+  "data": {}
+ },
+ {
+  "name": "p12",
+  "template": "{{ '%s=%d' | format('x', 1) }}",
+  "data": {}
+ },
+ {
+  "name": "p13",
+  "template": "{{ 'x' | default('d') }} {{ missing | default('d') }}",
+  "data": {}
+ },
+ {
+  "name": "p14",
+  "template": "{% for k, v in d.items() %}{{ k }}{{ v }}{% endfor %}",
+  "data": {
+   "d": {
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "p15",
+  "template": "{{ 'abc' | truncate(5, true, '...', 0) }}|{{ 'abc' | truncate(2, true, '...', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "p16",
+  "template": "{{ '  x  ' | trim }}|{{ 'a-b-c' | split('-') | last }}",
+  "data": {}
+ },
+ {
+  "name": "p17",
+  "template": "{{ 1 is odd }} {{ 2 is even }} {{ none is none }} {{ 1 is number }}",
+  "data": {}
+ },
+ {
+  "name": "p18",
+  "template": "{{ range(3) | join(',') }} {{ range(1, 4, 2) | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p19",
+  "template": "{{ {'b': 2, 'a': 1} | dictsort | map('first') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p20",
+  "template": "{{ [1,2] | select('odd') | join(',') }} {{ [1,2] | reject('odd') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p21",
+  "template": "{% macro m(a) %}{{ a }}!{% endmacro %}{{ m(1) }}",
+  "data": {}
+ },
+ {
+  "name": "p22",
+  "template": "{{ '<x>' | escape }} {{ ('<x>' | safe) }}",
+  "data": {}
+ },
+ {
+  "name": "p23",
+  "template": "{{ 1.5 | round }} {{ 2.5 | round }} {{ -1.5 | round }}",
+  "data": {}
+ },
+ {
+  "name": "p24",
+  "template": "{{ 'abc' | length }} {{ [1] | length }} {{ {'a': 1} | length }}",
+  "data": {}
+ },
+ {
+  "name": "p25",
+  "template": "{% for i in [1,2] recursive %}{{ i }}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "p26",
+  "template": "{{ x if x else 'd' }}",
+  "data": {
+   "x": 0
+  }
+ },
+ {
+  "name": "p27",
+  "template": "{{ users | map(attribute='n') | join(',') }}",
+  "data": {
+   "users": [
+    {
+     "n": "a"
+    },
+    {
+     "n": "b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "p28",
+  "template": "{{ ['a','A','b'] | unique | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p29",
+  "template": "{{ 1 in [1,2] }} {{ 'a' in 'abc' }} {{ 'k' in {'k': 1} }}",
+  "data": {}
+ },
+ {
+  "name": "p30",
+  "template": "{{ 'a b c'.split() | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "p31",
+  "template": "{{ 10 / 4 }} {{ 10 // 4 }} {{ 10 % 4 }}",
+  "data": {}
+ },
+ {
+  "name": "p32",
+  "template": "{{ true and 1 }} {{ false or 2 }}",
+  "data": {}
+ },
+ {
+  "name": "p33",
+  "template": "{{ ['b','a'] | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p34",
+  "template": "{% with a = 1 %}{{ a }}{% endwith %}",
+  "data": {}
+ },
+ {
+  "name": "p35",
+  "template": "{{ 'hello world' | wordcount }} {{ 'hi' | capitalize }}",
+  "data": {}
+ },
+ {
+  "name": "p36",
+  "template": "{{ [1,[2,3]] }} {{ {'a': [1]} }}",
+  "data": {}
+ },
+ {
+  "name": "p37",
+  "template": "{{ 5 | filesizeformat }} {{ 1048576 | filesizeformat }}",
+  "data": {}
+ },
+ {
+  "name": "p38",
+  "template": "{{ 'a' | urlencode }} {{ 'a b' | urlencode }}",
+  "data": {}
+ },
+ {
+  "name": "p39",
+  "template": "{{ {'a': [1,2]} | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "p40",
+  "template": "{% filter upper %}x{% endfilter %}",
+  "data": {}
+ },
+ {
+  "name": "p41",
+  "template": "{{ [1,2] | batch(2) | map('join', '+') | join('|') }}",
+  "data": {}
+ },
+ {
+  "name": "p42",
+  "template": "{{ 'x' * 3 }} {{ [0] * 2 }}",
+  "data": {}
+ },
+ {
+  "name": "p43",
+  "template": "{{ (1, 2, 3)[1] }} {{ (1, 2) | length }}",
+  "data": {}
+ },
+ {
+  "name": "p44",
+  "template": "{% include 'p.html' %}",
+  "data": {},
+  "templates": {
+   "p.html": "P"
+  }
+ },
+ {
+  "name": "p45",
+  "template": "{{ 'abc'.upper() }} {{ 'ABC'.lower() }}",
+  "data": {}
+ },
+ {
+  "name": "p46",
+  "template": "{{ 1 == 1.0 }} {{ '1' == 1 }} {{ none == none }}",
+  "data": {}
+ },
+ {
+  "name": "p47",
+  "template": "{{ [1,2] | map('string') | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p48",
+  "template": "{% for i in [1,2] %}{% for j in [3] %}{{ i }}{{ j }}{% endfor %}{% endfor %}",
+  "data": {}
+ },
+ {
+  "name": "p49",
+  "template": "{{ not 0 }} {{ not 'a' }} {{ not none }}",
+  "data": {}
+ },
+ {
+  "name": "p50",
+  "template": "{{ 'abc' | list | join(',') }} {{ (1,2) | list | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p51",
+  "template": "{{ 1234 | round(-2) }} {{ 1234 | abs }}",
+  "data": {}
+ },
+ {
+  "name": "p52",
+  "template": "{% block a %}X{% endblock %}",
+  "data": {}
+ },
+ {
+  "name": "p53",
+  "template": "{{ '<p>a</p> b' | striptags }}",
+  "data": {}
+ },
+ {
+  "name": "p54",
+  "template": "{{ 'a\nb' | indent(2) }}|",
+  "data": {}
+ },
+ {
+  "name": "p55",
+  "template": "{{ [1,2] | unique | sort | join(',') }}",
+  "data": {}
+ },
+ {
+  "name": "p56",
+  "template": "{{ true is sameas true }} {{ [] is iterable }} {{ [] is sequence }}",
+  "data": {}
+ },
+ {
+  "name": "p57",
+  "template": "{{ 'x' if true else 'y' }}",
+  "data": {}
+ },
+ {
+  "name": "p58",
+  "template": "{{ 1.0 }} {{ -0.0 }} {{ 1e3 }}",
+  "data": {}
+ },
+ {
+  "name": "p59",
+  "template": "{% set ns = namespace(v=1) %}{% set ns.v = 2 %}{{ ns.v }}",
+  "data": {}
+ },
+ {
+  "name": "p60",
+  "template": "{{ 'abcd' | slice(2) | map('join') | join('|') }}",
+  "data": {}
  }
 ]
