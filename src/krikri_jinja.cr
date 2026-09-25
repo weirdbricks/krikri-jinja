@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.3"
+  VERSION = "0.4.4"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -307,9 +307,13 @@ module KrikriJinja
     default_engine.known_test?(name)
   end
 
-  private def self.default_expression_engine(strict : Bool, loader : Loader?) : Engine
-    return Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new) if loader
-    default_engine.with_undefined(strict ? StrictUndefined.new : Undefined.new)
+  private def self.default_expression_engine(strict : Bool, loader : Loader?, host_context : HostContext?) : Engine
+    engine = if loader
+               Engine.new(loader, undefined: strict ? StrictUndefined.new : Undefined.new)
+             else
+               default_engine.with_undefined(strict ? StrictUndefined.new : Undefined.new)
+             end
+    host_context ? engine.with_host_context(host_context) : engine
   end
 
   def self.parse_expression(source : String, options : LexerOptions = LexerOptions.new) : Nodes::ExprNode
@@ -317,15 +321,17 @@ module KrikriJinja
   end
 
   def self.evaluate_expression(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
-                               strict : Bool = false, loader : Loader? = nil) : JSON::Any?
-    default_expression_engine(strict, loader).evaluate_json(source, variables)
+                               strict : Bool = false, loader : Loader? = nil,
+                               host_context : HostContext? = nil) : JSON::Any?
+    default_expression_engine(strict, loader, host_context).evaluate_json(source, variables)
   end
 
   # Like `evaluate_expression`, but reports undefined results explicitly so
   # callers can tell them apart from a JSON null value.
   def self.evaluate_expression_result(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
-                                      strict : Bool = false, loader : Loader? = nil) : ExpressionResult
-    value = default_expression_engine(strict, loader)
+                                      strict : Bool = false, loader : Loader? = nil,
+                                      host_context : HostContext? = nil) : ExpressionResult
+    value = default_expression_engine(strict, loader, host_context)
       .evaluate_expression(source, variables.transform_values { |item| from_json_any(item) })
     if value.raw.is_a?(Undefined)
       ExpressionResult.new(nil, true)
@@ -335,21 +341,24 @@ module KrikriJinja
   end
 
   def self.evaluate_expression_value(source : String, variables : Hash(String, JSON::Any) = {} of String => JSON::Any,
-                                     strict : Bool = false, loader : Loader? = nil) : AnyValue
-    default_expression_engine(strict, loader).evaluate_expression(
+                                     strict : Bool = false, loader : Loader? = nil,
+                                     host_context : HostContext? = nil) : AnyValue
+    default_expression_engine(strict, loader, host_context).evaluate_expression(
       source, variables.transform_values { |item| from_json_any(item) }
     )
   end
 
   def self.render(source : String, variables : Hash(String, V) = {} of String => String,
-                  loader : Loader? = nil) : String forall V
+                  loader : Loader? = nil, host_context : HostContext? = nil) : String forall V
     engine = loader ? Engine.new(loader) : default_engine
+    host_context ? (engine = engine.with_host_context(host_context)) : engine
     engine.render_string(source, context(variables))
   end
 
   def self.render(source : String, variables : Hash(String, AnyValue),
-                  loader : Loader? = nil) : String
+                  loader : Loader? = nil, host_context : HostContext? = nil) : String
     engine = loader ? Engine.new(loader) : default_engine
+    host_context ? (engine = engine.with_host_context(host_context)) : engine
     engine.render_string(source, variables)
   end
 end

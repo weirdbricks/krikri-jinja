@@ -53,3 +53,26 @@ describe "KrikriJinja.evaluate_expression_result" do
     result.value.not_nil!.to_json.should eq(%(["a","b"]))
   end
 end
+
+class SpecHostContext < KrikriJinja::HostContext
+  getter prefix : String
+
+  def initialize(@prefix : String)
+  end
+end
+
+describe "KrikriJinja host context" do
+  it "hands the caller context to registered functions" do
+    KrikriJinja.reset_default_engine
+    KrikriJinja.register_default_function("greet") do |args, _kwargs, ctx|
+      host = ctx.host_context
+      KrikriJinja.from_json_any(JSON::Any.new("#{host.not_nil!.as(SpecHostContext).prefix}#{KrikriJinja.stringify(args[0].not_nil!)}"))
+    end
+
+    KrikriJinja.render("{{ greet('world') }}", host_context: SpecHostContext.new("hello ")).should eq("hello world")
+    KrikriJinja.evaluate_expression("greet('world')", host_context: SpecHostContext.new("hi "))
+      .not_nil!.as_s.should eq("hi world")
+  ensure
+    KrikriJinja.reset_default_engine
+  end
+end

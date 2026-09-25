@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.3)
+## Status (v0.4.4)
 
 Implemented:
 
@@ -152,6 +152,32 @@ and `register_default_loader_function` mirror their `Engine` counterparts;
 out the surface. Each call to `evaluate_expression` still gets its own engine,
 derived from the default one, so per-call `strict:` and `loader:` arguments keep
 working and cannot leak state into the shared engine.
+
+### Host context
+
+Hosts that need controller-side state inside a registration (variable scope,
+role paths, plugin runners) subclass `KrikriJinja::HostContext` and hand an
+instance to the call:
+
+```crystal
+class AnsibleContext < KrikriJinja::HostContext
+  getter vars : Hash(String, JSON::Any)
+  def initialize(@vars)
+  end
+end
+
+KrikriJinja.register_default_function("lookup") do |args, kwargs, ctx|
+  host = ctx.host_context.as(AnsibleContext)
+  # ... call out to the controller's lookup plugin with host.vars ...
+end
+
+KrikriJinja.render(template, vars, host_context: AnsibleContext.new(vars))
+```
+
+`render`, `evaluate_expression`, `evaluate_expression_result`, and
+`evaluate_expression_value` all accept `host_context:`; the engine passes it to
+every registered filter, test, and function it invokes, including inside
+includes, imports, and macros.
 
 ### Undefined versus null
 

@@ -13,6 +13,10 @@ module KrikriJinja
     property hide_loop_var : Bool
     property hide_super : Bool
     property loop_is_local : Bool
+    # Opaque caller-supplied context handed to registered filters, tests,
+    # and functions, for hosts that need controller-side state (variable
+    # scope, role paths, plugin runners) that the engine cannot know about.
+    property host_context : HostContext?
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
@@ -28,6 +32,7 @@ module KrikriJinja
       @hide_loop_var = false
       @hide_super = false
       @loop_is_local = true
+      @host_context = nil.as(HostContext?)
     end
 
     def [](name : String) : AnyValue
