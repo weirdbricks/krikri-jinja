@@ -710,7 +710,7 @@ module KrikriJinja
                                 when Hash   then raw.keys.map { |k| AnyValue.new(k) }
                                 when TupleValue then raw.items
                                 when Undefined
-                                  raise TemplateError.new("'missing' is undefined", node.line, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
+                                  raise TemplateError.new(KrikriJinja.undefined_message(raw.as(Undefined)), node.line, kind: ErrorKind::Undefined) if raw.is_a?(Undefined) && raw.as(Undefined).strict?
                                   [] of AnyValue
                                 when GeneratorValue then raw.materialize
                                 else raise TemplateError.new("#{raw.class} is not iterable", node.line)
@@ -1358,7 +1358,7 @@ module KrikriJinja
     private def eval_getattr(expr : Nodes::GetattrNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new("'missing' is undefined", expr.line, kind: ErrorKind::Undefined)
+        raise TemplateError.new(KrikriJinja.undefined_message(obj.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined)
       end
       get_attr(obj, expr.attr) || AnyValue.new(@ctx.undefined)
     end
@@ -1366,7 +1366,7 @@ module KrikriJinja
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new("'missing' is undefined", expr.line, kind: ErrorKind::Undefined)
+        raise TemplateError.new(KrikriJinja.undefined_message(obj.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
       result = case raw = obj.raw
