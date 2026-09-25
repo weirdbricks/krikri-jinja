@@ -498,6 +498,49 @@ b|")
     end
   end
 
+
+  describe "parity: round 11" do
+    it "routes int64 subtraction overflow through big ints" do
+      KrikriJinja.render("{{ -9223372036854775807 - 2 }}").should eq("-9223372036854775809")
+    end
+
+    it "compares Markup with strings" do
+      render_env("{{ ('x' | safe) == 'x' }}").should eq("True")
+    end
+
+    it "indents blank lines only with blank=true" do
+      KrikriJinja.render("{{ 'a\n\nb' | indent(2) }}|").should eq("a
+
+  b|")
+      KrikriJinja.render("{{ 'a\n\nb' | indent(2, blank=true) }}|").should eq("a
+  
+  b|")
+    end
+
+    it "keeps whitespace-only lines under lstrip_blocks" do
+      render_env("x\n   \n{% if true %}y{% endif %}", lstrip_blocks: true).should eq("x
+   
+y")
+      render_env("x\n  {% if true %}y{% endif %}", lstrip_blocks: true).should eq("x
+y")
+    end
+
+    it "requires single-character fill for ljust/rjust/center" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ 'a'.ljust(4, 'xy') }}")
+      end
+    end
+
+    it "accepts trim chars as keyword" do
+      KrikriJinja.render("{{ 'xxaxx' | trim(chars='x') }}").should eq("a")
+    end
+
+    it "treats unique results as generators" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ [1,1] | unique | length }}")
+      end
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
