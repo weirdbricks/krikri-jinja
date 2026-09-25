@@ -3,9 +3,22 @@ module KrikriJinja
     @state : Array(UInt32)
     @index : Int32
 
-    def initialize(seed : Int64)
-      value = seed < 0 ? (-(seed.to_i128 + 1)).to_u64 + 1_u64 : seed.to_u64
-      key = value == 0 ? [0_u64] : split_words(value)
+    def self.for_seed(seed)
+      key = case seed
+            when Int64
+              value = seed < 0 ? (-(seed.to_i128 + 1)).to_u64 + 1_u64 : seed.to_u64
+              value == 0 ? [0_u64] : split_words(value)
+            when Bool
+              [seed ? 1_u64 : 0_u64]
+            when String
+              legacy_words(seed)
+            else
+              raise TemplateError.new("random seed must be an integer or string", 0, kind: ErrorKind::Type)
+            end
+      new(key)
+    end
+
+    def initialize(key : Array(UInt64))
       @state = Array(UInt32).new(624, 0_u32)
       @state[0] = 19650218_u32
       1.upto(623) do |position|
@@ -47,13 +60,22 @@ module KrikriJinja
       end
     end
 
-    private def split_words(value : UInt64) : Array(UInt64)
+    private def self.split_words(value : UInt64) : Array(UInt64)
       words = [] of UInt64
       while value > 0
         words << (value & 0xffffffff_u64)
         value >>= 32
       end
       words
+    end
+
+    private def self.legacy_words(value : String) : Array(UInt64)
+      seed = 2166136261_u64
+      value.each_byte do |byte|
+        seed = (seed ^ byte.to_u64) &* 16777619_u64
+      end
+      seed = (seed &+ 2485244292_u64) & 0xffffffff_u64
+      seed == 0 ? [0_u64] : split_words(seed)
     end
 
     private def getrandbits(count : Int32) : UInt64

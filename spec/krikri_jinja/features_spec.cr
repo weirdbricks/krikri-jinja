@@ -155,6 +155,13 @@ describe KrikriJinja do
         .should eq("1 a 7")
     end
 
+    it "matches Python seed behavior for integer and string seeds" do
+      KrikriJinja.render("{{ random(65534, seed=1) }}").should eq("8805")
+      KrikriJinja.render("{{ random(65534, seed='host1') }}").should eq("31863")
+      KrikriJinja.render("{{ random(65534, seed='host1') }}")
+        .should eq(KrikriJinja.render("{{ random(65534, seed='host1') }}"))
+    end
+
     it "supports Ansible integer range forms" do
       KrikriJinja.render("{{ random(10, seed=42) }} {{ random(10, 20, seed=42) }} {{ random(10, 20, 2, seed=42) }}")
         .should eq("1 11 10")

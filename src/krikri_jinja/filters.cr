@@ -757,15 +757,14 @@ module KrikriJinja
 
   private def self.random_seed(kwargs)
     seed = kwargs["seed"]?.try(&.raw)
-    unless seed.nil? || seed.is_a?(Int64) || seed.is_a?(Bool)
-      raise TemplateError.new("random seed must be an integer", 0, kind: ErrorKind::Type)
+    unless seed.nil? || seed.is_a?(Int64) || seed.is_a?(Bool) || seed.is_a?(String)
+      raise TemplateError.new("random seed must be an integer or string", 0, kind: ErrorKind::Type)
     end
-    return nil unless seed
-    seed.is_a?(Bool) ? (seed.as(Bool) ? 1_i64 : 0_i64) : seed.as(Int64)
+    seed
   end
 
-  private def self.random_index(seed : Int64?, count : UInt64) : UInt64
-    seed ? PythonRandom.new(seed).rand(count) : Random.new.rand(count)
+  private def self.random_index(seed, count : UInt64) : UInt64
+    seed ? PythonRandom.for_seed(seed).rand(count) : Random.new.rand(count)
   end
 
   private def self.random_integer(values : Array(AnyValue), kwargs)
