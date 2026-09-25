@@ -179,6 +179,8 @@ module KrikriJinja
       (x.is_a?(Bool) ? (x ? 1 : 0) : x.as(Int64)) == (y.is_a?(Bool) ? (y ? 1 : 0) : y.as(Int64))
     elsif (x.is_a?(Markup) && y.is_a?(String))
       x.value == y
+    elsif (x.is_a?(Markup) && y.is_a?(Markup))
+      x.value == y.value
     elsif (x.is_a?(String) && y.is_a?(Markup))
       x == y.value
     elsif (x.is_a?(Bool) && y.is_a?(Float64))
