@@ -632,6 +632,15 @@ y")
       render_env("a\n{% raw %}\nb\n{% endraw %}\nc", trim_blocks: true).should eq("a\n\nb\nc")
     end
   end
+
+  describe "parity: round 16" do
+    it "isolates block registries of included templates" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new(
+        {"p.html" => "{% block b %}P{% endblock %}"}
+      )).render_string("{% include 'p.html' %}{% block b %}C{% endblock %}",
+        KrikriJinja.context({} of String => String)).should eq("PC")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
