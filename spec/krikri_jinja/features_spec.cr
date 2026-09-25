@@ -120,7 +120,11 @@ describe KrikriJinja do
 
     it "unique with attribute" do
       ctx = KrikriJinja.context({"items" => [{"k" => 1}, {"k" => 1}, {"k" => 2}]})
-      KrikriJinja.render("{{ items | unique(attribute='k') | length }}", ctx).should eq("2")
+      # unique returns a python generator, which has no length
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ items | unique(attribute='k') | length }}", ctx)
+      end
+      KrikriJinja.render("{{ items | unique(attribute='k') | list | length }}", ctx).should eq("2")
     end
 
     it "select by test" do
