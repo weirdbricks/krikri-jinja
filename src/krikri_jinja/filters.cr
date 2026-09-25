@@ -456,18 +456,18 @@ module KrikriJinja
              elsif tname = kwargs["test"]?.try(&.raw.as?(String))
                t = BUILTIN_TESTS[tname]?
                raise TemplateError.new("unknown test #{tname.inspect} in map", 0) unless t
-               extra = args[0..]
+               extra = args
                to_iterable(v).select { |item| t.call(item, extra, kwargs, c) }
              else
-               fname = kwargs["filter"]?.try(&.raw.as?(String)) || args[0]?.try(&.raw.as?(String))
-               raise TemplateError.new("map requires attribute or filter", 0) unless fname
+               fname = args[0]?.try(&.raw.as?(String))
+               raise TemplateError.new("map requires a filter argument", 0) unless fname
                f = BUILTIN_FILTERS[fname]?
                raise TemplateError.new("unknown filter #{fname.inspect} in map", 0) unless f
                inner_kwargs = kwargs.reject("attribute", "default", "test", "filter")
                if !inner_kwargs.empty? && !KWARG_FILTERS.includes?(fname)
                  raise TemplateError.new("#{fname}() got an unexpected keyword argument", 0)
                end
-               positional_args = args[1..]
+               positional_args = args.size > 1 ? args[1..] : [] of AnyValue
                max_args = MAX_POSITIONAL[fname]?
                if max_args && positional_args.size > max_args
                  raise TemplateError.new("#{fname}() takes at most #{max_args} positional argument(s)", 0)
@@ -531,7 +531,7 @@ module KrikriJinja
     end
     fill_with ? AnyValue.new(out_arr) : AnyValue.new(GeneratorValue.new(out_arr))
   end
-  register_filter("slice") do |v, args, _k, _c|
+  register_filter("slice") do |v, args, kwargs, _c|
     a0 = args[0]? || raise TemplateError.new("slice requires a count", 0)
     count = a0.raw.as?(Int64)
     # python defers count problems until the generator is consumed
@@ -539,14 +539,14 @@ module KrikriJinja
       begin
         count = length_of(a0)
       rescue
-        fill_with = args[1]?
+        fill_with = args[1]? || kwargs["fill_with"]?
         next fill_with ? AnyValue.new([] of AnyValue) : AnyValue.new(GeneratorValue.new([] of AnyValue, "slice: count must be an integer"))
       end
     end
     if count <= 0
       next AnyValue.new(GeneratorValue.new([] of AnyValue, "integer division or modulo by zero"))
     end
-    fill_with = args[1]?
+    fill_with = args[1]? || kwargs["fill_with"]?
     begin
       items = to_iterable(v)
     rescue
@@ -705,6 +705,15 @@ module KrikriJinja
   register_filter("pprint") { |v, _a, _k, _c| AnyValue.new(stringify(v)) }
   register_filter("urlize") do |v, args, kwargs, _c|
     text = stringify(v)
+    rel_arg = kwargs["rel"]?
+    rel = if rel_arg
+            rel_arg.raw.as?(String) || raise TemplateError.new("urlize rel must be a string", 0)
+          else
+            "noopener"
+          end
+    rel = rel.empty? ? rel : "#{rel} noopener" if rel_arg
+    target = kwargs["target"]?.try(&.raw.as?(String))
+    target_attr = target && !target.empty? ? " target=\"#{target}\"" : ""
     email_re = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/
     pieces = text.split(/(\s+)/)
     rendered = pieces.map do |word|
@@ -726,9 +735,9 @@ module KrikriJinja
           href = "https://#{token}"
         end
         if href
-          %(<a href="#{KrikriJinja.escape_html(href.not_nil!)}" rel="noopener">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
+          %(<a href="#{KrikriJinja.escape_html(href.not_nil!)}" rel="#{KrikriJinja.escape_html(rel)}"#{target_attr}>#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
         elsif email_re.matches?(token)
-          %(<a href="mailto:#{KrikriJinja.escape_html(token)}">#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
+          %(<a href="mailto:#{KrikriJinja.escape_html(token)}"#{target_attr}>#{KrikriJinja.escape_html(token)}</a>#{KrikriJinja.escape_html(trail)})
         else
           KrikriJinja.escape_html(word)
         end
@@ -756,11 +765,13 @@ module KrikriJinja
                     "wordwrap" => 2, "filesizeformat" => 1, "sum" => 2}
 
   private def self.test_select(v, args, kwargs, ctx, keep : Bool) : Array(AnyValue)
-    fname = args[0]?.try(&.raw.as?(String)) || kwargs["test"]?.try(&.raw.as?(String)) ||
-            raise TemplateError.new("select/reject requires a test name", 0)
-    test = BUILTIN_TESTS[fname]?
+    fname = args[0]?.try(&.raw.as?(String))
+    if fname.nil?
+      return to_iterable(v).select { |item| truthy?(item) == keep }
+    end
+    test = BUILTIN_TESTS[fname]
     raise TemplateError.new("unknown test #{fname.inspect}", 0) unless test
-    rest = args[1..]
+    rest = args.size > 1 ? args[1..] : [] of AnyValue
     to_iterable(v).select do |item|
       result = test.call(item, rest, kwargs, ctx)
       keep ? result : !result
@@ -774,7 +785,7 @@ module KrikriJinja
     if fname
       test = BUILTIN_TESTS[fname]?
       raise TemplateError.new("unknown test #{fname.inspect}", 0) unless test
-      rest = args[2..]
+      rest = args.size > 2 ? args[2..] : [] of AnyValue
       items.select do |item|
         val = get_attr(item, attr) || AnyValue.new(nil)
         result = test.call(val, rest, kwargs, ctx)
