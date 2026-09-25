@@ -48,6 +48,7 @@ module KrikriJinja
     case v = value.raw
     when String then "'#{v}'"
     when Undefined then "Undefined"
+    when Markup then "Markup('#{v.value}')"
     else stringify(value)
     end
   end
@@ -113,7 +114,7 @@ module KrikriJinja
     # match Python's repr: integral floats get ".0"; scientific notation
     # thresholds and 2-digit exponents follow Python too.
     if v == v.trunc && v.abs < 1e16
-      "#{v.trunc.to_i}.0"
+      "#{v.trunc.to_i64}.0"
     else
       s = v.to_s
       if (m = s.match(/^(\-?[0-9.]+)e([+-]?\d+)$/))

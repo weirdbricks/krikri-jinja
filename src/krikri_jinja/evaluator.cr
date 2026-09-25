@@ -853,6 +853,9 @@ module KrikriJinja
       when {Float64, Float64} then a + b
       when {Int64, Float64} then a.to_f64 + b
       when {Float64, Int64} then a + b.to_f64
+      when {Markup, String} then a.value + b
+      when {String, Markup} then a + b.value
+      when {Markup, Markup} then a.value + b.value
       when {String, String} then a + b
       when {Array, Array} then a + b
       else
@@ -888,6 +891,8 @@ module KrikriJinja
       case {a, b}
       when {String, Int64} then b <= 0 ? "" : a * b
       when {Int64, String} then a <= 0 ? "" : b * a
+      when {Markup, Int64} then b <= 0 ? "" : a.value * b
+      when {Int64, Markup} then a <= 0 ? "" : b.value * a
       when {Array, Int64}
         out_arr = [] of AnyValue
         (b > 0 ? b : 0).times { out_arr.concat(a) }
@@ -1057,7 +1062,12 @@ module KrikriJinja
 
     private def eval_slice(expr : Nodes::SliceNode) : AnyValue
       obj = eval(expr.obj)
-      step = expr.step ? (eval(expr.step.not_nil!).raw.as?(Int64) || 1i64) : 1i64
+      raw_step = expr.step ? eval(expr.step.not_nil!).raw : nil
+      if expr.step && !raw_step.is_a?(Int64)
+        # python raises on non-integer slice steps; jinja surfaces empty
+        return obj.raw.is_a?(String) ? AnyValue.new("") : AnyValue.new([] of AnyValue)
+      end
+      step = expr.step ? (raw_step.as(Int64)) : 1i64
       size_hint = (obj.raw.is_a?(String) ? obj.raw.as(String).size : obj.raw.as?(Array).try(&.size)) || 0
       default_start = step < 0 ? (size_hint - 1).to_i64 : 0i64
       raise TemplateError.new("slice step cannot be zero", expr.line) if step == 0
