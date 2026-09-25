@@ -204,6 +204,9 @@ module KrikriJinja
         end
         work["kwargs"] = AnyValue.new(remaining_kwargs)
         @params.each_with_index do |(pname, default), i|
+          if i < args.size && kwargs.has_key?(pname)
+            raise TemplateError.new("macro #{@name} takes no keyword argument '#{pname}'", 0)
+          end
           value = if i < args.size
                     args[i]
                   elsif kwargs.has_key?(pname)
