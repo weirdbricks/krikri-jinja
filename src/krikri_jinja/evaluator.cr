@@ -1325,9 +1325,26 @@ module KrikriJinja
              when ">=" then compare_values(left, right) >= 0
              # Python's `x in list` never raises for an undefined LEFT
              # operand: membership simply reports False, which is what real
-             # Ansible's own `{{ undefined_var in some_list }}` does.
-             when "in" then left.raw.is_a?(Undefined) ? false : contains?(right, left)
-             when "not in" then left.raw.is_a?(Undefined) ? true : !contains?(right, left)
+             # Ansible's own `{{ undefined_var in some_list }}` does. A
+             # STRING container is the exception - Python raises there.
+             when "in"
+               if left.raw.is_a?(Undefined)
+                 if right.raw.is_a?(String)
+                   raise TemplateError.new("'in <string>' requires string as left operand, not UndefinedMarker", expr.line)
+                 end
+                 false
+               else
+                 contains?(right, left)
+               end
+             when "not in"
+               if left.raw.is_a?(Undefined)
+                 if right.raw.is_a?(String)
+                   raise TemplateError.new("'in <string>' requires string as left operand, not UndefinedMarker", expr.line)
+                 end
+                 true
+               else
+                 !contains?(right, left)
+               end
              else raise TemplateError.new("unknown comparison #{op}", expr.line)
              end
         return false unless ok
