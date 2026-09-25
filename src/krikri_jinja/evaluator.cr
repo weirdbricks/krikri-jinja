@@ -719,8 +719,10 @@ module KrikriJinja
         @ctx.push_scope
         old_noloop = @ctx.hide_loop_var
         old_nosuper = @ctx.hide_super
+        old_blocks = @ctx.blocks
         @ctx.hide_loop_var = true
         @ctx.hide_super = true
+        @ctx.blocks = {} of String => Array(Nodes::BlockNode)
         begin
           sub_eval = Evaluator.new(@ctx, @engine)
           sub_eval.render_template(sub_node)
@@ -728,6 +730,7 @@ module KrikriJinja
         ensure
           @ctx.hide_loop_var = old_noloop
           @ctx.hide_super = old_nosuper
+          @ctx.blocks = old_blocks
           @ctx.pop_scope
         end
       else

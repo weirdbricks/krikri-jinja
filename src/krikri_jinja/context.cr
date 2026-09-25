@@ -4,7 +4,7 @@ module KrikriJinja
     getter globals : Hash(String, AnyValue)
     property autoescape : Bool
     getter loader : Loader?
-    getter blocks : Hash(String, Array(Nodes::BlockNode))
+    property blocks : Hash(String, Array(Nodes::BlockNode))
     property hide_locals : Bool
     property hide_from : Int32
     property hide_loop_var : Bool
