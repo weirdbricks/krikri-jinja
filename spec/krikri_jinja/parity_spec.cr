@@ -422,6 +422,66 @@ describe KrikriJinja do
       KrikriJinja.render("{% macro m() %}{{ varargs | length }}{% endmacro %}{{ m(1, 2, 3) }}").should eq("3")
     end
   end
+
+  describe "parity: rounds 7-10" do
+    it "centers with python padding rule" do
+      KrikriJinja.render("{{ 'ab' | center(5) }}|").should eq("  ab |")
+    end
+
+    it "supports tuple dict keys" do
+      KrikriJinja.render("{{ {(1, 2): 'v'} }}").should eq("{(1, 2): 'v'}")
+    end
+
+    it "rejects bare caller parameter" do
+      expect_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{% macro m(caller) %}{{ caller }}{% endmacro %}")
+      end
+    end
+
+    it "treats 1 and True as the same dict key, first form wins" do
+      KrikriJinja.render("{{ {1: 'a', true: 'b'}[1] }} {{ {1: 'a', true: 'b'}[true] }}").should eq("b b")
+      KrikriJinja.render("{{ {true: 'a', 1: 'b'} }}").should eq("{True: 'b'}")
+    end
+
+    it "orders tuples lexicographically" do
+      KrikriJinja.render("{{ [(2,), (1,)] | sort | join(',') }}").should eq("(1,),(2,)")
+    end
+
+    it "wraps with custom wrapstring positionally" do
+      KrikriJinja.render("{{ 'a b c' | wordwrap(4, true, '--') }}").should eq("a b--c")
+    end
+
+    it "renders inf and huge floats like python" do
+      KrikriJinja.render("{{ 1e308 * 10 }} {{ 1e15 }}").should eq("inf 1000000000000000.0")
+    end
+
+    it "repeats Markup like strings in arithmetic" do
+      # macros return Markup (a str subclass), so int * macro-result repeats
+      KrikriJinja.render("{% macro m(n) %}{{ n if n < 2 else n * m(n - 1) }}{% endmacro %}{{ m(4) }}")
+        .should eq("1" * 24)
+    end
+
+    it "renders Markup repr inside containers" do
+      render_env("{{ ('<x>' | safe, 'y') }}", autoescape: true).should eq("(Markup(&#39;&lt;x&gt;&#39;), &#39;y&#39;)")
+    end
+
+    it "returns empty for non-integer slice steps" do
+      KrikriJinja.render("{{ 'abc'[::1.5] }}|").should eq("|")
+    end
+
+    it "sums chains of big integers" do
+      KrikriJinja.render("{{ [9223372036854775807, 9223372036854775807, 1] | sum }}").should eq("18446744073709551615")
+    end
+
+    it "leaves strings unchanged for non-positive indent" do
+      KrikriJinja.render("{{ 'a\nb' | indent(-1) }}|").should eq("a
+b|")
+    end
+
+    it "exposes dict.get with default" do
+      KrikriJinja.render("{{ d.get('zz', 'none') }} {{ d.get('a') }}", {"d" => {"a" => 1}}).should eq("none 1")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
