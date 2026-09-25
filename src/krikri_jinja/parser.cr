@@ -823,12 +823,20 @@ module KrikriJinja
       kwargs = [] of Tuple(String, ExprNode)
       loop do
         break if accept_op(")")
-        if current.type == TokenType::Ident && peek(1).type == TokenType::Op && peek(1).value == "=" &&
-           !{"true", "false", "True", "False", "none", "None"}.includes?(current.value)
+        if current.type == TokenType::Op && current.value == "*"
+          advance
+          args << Nodes::UnaryOpNode.new("*", parse_expression, current.line)
+        elsif current.type == TokenType::Op && current.value == "**"
+          advance
+          args << Nodes::UnaryOpNode.new("**", parse_expression, current.line)
+        elsif current.type == TokenType::Ident && peek(1).type == TokenType::Op && peek(1).value == "=" &&
+              !{"true", "false", "True", "False", "none", "None"}.includes?(current.value)
           k = current.value
           advance
           advance
           kwargs << {k, parse_expression}
+        elsif !kwargs.empty?
+          raise TemplateError.new("invalid syntax for function call expression", current.line)
         else
           args << parse_expression
         end

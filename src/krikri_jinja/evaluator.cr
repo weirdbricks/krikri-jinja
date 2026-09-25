@@ -321,6 +321,7 @@ module KrikriJinja
     @ctx : Context
     @engine : Engine
     @out : ::IO
+    @macro_frames : Array(Hash(String, AnyValue)) = [] of Hash(String, AnyValue)
 
     def initialize(@ctx, engine : Engine? = nil, buf : ::IO? = nil)
       @engine = engine || Engine.new
@@ -378,10 +379,15 @@ module KrikriJinja
         # Child/ancestor module-level statements (sets, macros, imports) run
         # even though only the root parent's markup renders.
         chain_bodies.each do |b|
-          b.each do |n|
+          # top-level statements execute anywhere, but visible content only
+          # before the extends tag renders (jinja drops the rest)
+          limit = b.index { |n| n.is_a?(Nodes::ExtendsNode) } || b.size
+          b.each_with_index do |n, i|
             case n
             when Nodes::SetNode, Nodes::MacroNode, Nodes::ImportNode, Nodes::DoNode
               render_node(n)
+            when Nodes::TextNode, Nodes::OutputNode
+              render_node(n) if i < limit
             end
           end
         end
@@ -435,11 +441,21 @@ module KrikriJinja
       when Nodes::IfNode
         node.branches.each do |(cond, body)|
           if truthy?(eval(cond))
-            render_nodes(body)
+            @macro_frames.push({} of String => AnyValue)
+            begin
+              render_nodes(body)
+            ensure
+              @macro_frames.pop
+            end
             return
           end
         end
-        render_nodes(node.orelse || [] of Nodes::Node)
+        @macro_frames.push({} of String => AnyValue)
+        begin
+          render_nodes(node.orelse || [] of Nodes::Node)
+        ensure
+          @macro_frames.pop
+        end
       when Nodes::ForNode
         render_for(node)
       when Nodes::SetNode
@@ -449,7 +465,11 @@ module KrikriJinja
         chain = blocks && !blocks.empty? ? blocks : [node]
         render_block_chain(chain, 0)
       when Nodes::MacroNode
-        @ctx[node.name] = AnyValue.new(MacroCallable.new(node.name, node.params, node.body, @ctx))
+        if @macro_frames.empty?
+          @ctx[node.name] = AnyValue.new(MacroCallable.new(node.name, node.params, node.body, @ctx))
+        else
+          @macro_frames.last[node.name] = AnyValue.new(MacroCallable.new(node.name, node.params, node.body, @ctx))
+        end
       when Nodes::CallNode
         render_call(node)
       when Nodes::FilterBlockNode
@@ -574,7 +594,12 @@ module KrikriJinja
         items.each_with_index do |item, i|
           assign_targets(node.targets, item)
           @ctx["loop"] = AnyValue.new(loop_obj)
-          render_nodes(node.body)
+          @macro_frames.push({} of String => AnyValue)
+          begin
+            render_nodes(node.body)
+          ensure
+            @macro_frames.pop
+          end
           loop_obj.index = i + 1
         end
       ensure
@@ -753,6 +778,11 @@ module KrikriJinja
       when Nodes::ConstNode
         AnyValue.new(expr.value)
       when Nodes::NameNode
+        @macro_frames.reverse_each do |frame|
+          if frame.has_key?(expr.name)
+            return frame[expr.name]
+          end
+        end
         @ctx[expr.name]
       when Nodes::ListExprNode
         AnyValue.new(expr.items.map { |i| eval(i) })
@@ -1117,7 +1147,20 @@ module KrikriJinja
 
     private def eval_call(expr : Nodes::CallExprNode) : AnyValue
       func = eval(expr.func)
-      args = expr.args.map { |a| eval(a) }
+      args = [] of AnyValue
+      expr.args.each do |a|
+        if a.is_a?(Nodes::UnaryOpNode) && a.op == "*"
+          item = eval(a.operand)
+          args.concat(KrikriJinja.to_iterable(item))
+        elsif a.is_a?(Nodes::UnaryOpNode) && a.op == "**"
+          item = eval(a.operand)
+          if item.raw.is_a?(Hash)
+            item.raw.as(Hash).each { |k, v| expr.kwargs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
+          end
+        else
+          args << eval(a)
+        end
+      end
       kwargs = eval_kwargs(expr.kwargs)
       case raw = func.raw
       when Callable

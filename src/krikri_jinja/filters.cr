@@ -287,7 +287,8 @@ module KrikriJinja
          .gsub("&#39;", "'").gsub("&nbsp;", " ").gsub("&amp;", "&")
     AnyValue.new(s)
   end
-  register_filter("urlencode") do |v, _a, _k, _c|
+  register_filter("urlencode") do |v, _a, kwargs, _c|
+    raise TemplateError.new("do_urlencode() got an unexpected keyword argument '#{kwargs.first_key}'", 0) unless kwargs.empty?
     case raw = v.raw
     when String then AnyValue.new(KrikriJinja.percent_encode(raw, "/"))
     when Hash
@@ -399,7 +400,7 @@ module KrikriJinja
       end
       out_arr << AnyValue.new(slice)
     end
-    AnyValue.new(out_arr)
+    fill_with ? AnyValue.new(out_arr) : AnyValue.new(GeneratorValue.new(out_arr))
   end
   register_filter("slice") do |v, args, _k, _c|
     count = args[0]?.try(&.raw.as?(Int64)) || raise TemplateError.new("slice requires a count", 0)
