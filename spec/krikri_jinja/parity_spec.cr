@@ -641,6 +641,12 @@ y")
         KrikriJinja.context({} of String => String)).should eq("PC")
     end
   end
+
+  describe "parity: round 17" do
+    it "compares Markup values with each other" do
+      render_env("{{ ('x' | safe) == ('x' | safe) }}").should eq("True")
+    end
+  end
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
