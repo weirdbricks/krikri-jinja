@@ -93,12 +93,18 @@ module KrikriJinja
     property trim_blocks : Bool
     property lstrip_blocks : Bool
     property keep_trailing_newline : Bool
+    # Ansible's inline `{{ }}` templating doubles every backslash before
+    # Jinja decodes string literals, so a literal's text survives exactly as
+    # written. When set, string literals in `{{ }}` tags keep their escapes
+    # verbatim; `{% %}` tag literals still decode.
+    property verbatim_expression_strings : Bool
 
     def initialize(@block_start = "{%", @block_end = "%}",
                    @var_start = "{{", @var_end = "}}",
                    @comment_start = "{#", @comment_end = "#}",
                    @trim_blocks = false, @lstrip_blocks = false,
-                   @keep_trailing_newline = false)
+                   @keep_trailing_newline = false,
+                   @verbatim_expression_strings = false)
     end
   end
 
@@ -233,7 +239,7 @@ module KrikriJinja
         case opening
         when opts.var_start
           out_tokens << Token.new(TokenType::VarStart, opts.var_start, line)
-          out_tokens.concat tokenize_expression(content, line)
+          out_tokens.concat tokenize_expression(content, line, opts.verbatim_expression_strings)
           out_tokens << Token.new(TokenType::VarEnd, opts.var_end, line)
         when opts.block_start
           stripped = content.strip
@@ -366,7 +372,7 @@ module KrikriJinja
       out_tokens
     end
 
-    private def tokenize_expression(src : String, base_line : Int32) : Array(Token)
+    private def tokenize_expression(src : String, base_line : Int32, verbatim_strings : Bool = false) : Array(Token)
       toks = [] of Token
       i = 0
       line = base_line
@@ -392,7 +398,7 @@ module KrikriJinja
         when '+', '-', '*', '/', '>', '<', '=', '!', '|'
           i = read_operator(src, i, toks, line)
         when '"', '\''
-          i = read_string(src, i, toks, line)
+          i = verbatim_strings ? read_verbatim_string(src, i, toks, line) : read_string(src, i, toks, line)
         when .number?
           i = read_number(src, i, toks, line)
         when .letter?, '_'
@@ -437,6 +443,29 @@ module KrikriJinja
         toks << Token.new(TokenType::Op, src[i].to_s, line)
         i + 1
       end
+    end
+
+    # A backslash still pairs with the next character, so an escaped quote
+    # does not end the literal, but both characters are kept as written.
+    private def read_verbatim_string(src, i, toks, line) : Int32
+      quote = src[i]
+      i += 1
+      buf = String::Builder.new
+      while i < src.size
+        ch = src[i]
+        if ch == '\\' && i + 1 < src.size
+          buf << ch << src[i + 1]
+          i += 2
+        elsif ch == quote
+          i += 1
+          break
+        else
+          buf << ch
+          i += 1
+        end
+      end
+      toks << Token.new(TokenType::String, buf.to_s, line)
+      i
     end
 
     private def read_string(src, i, toks, line) : Int32

@@ -17,6 +17,8 @@ module KrikriJinja
     # and functions, for hosts that need controller-side state (variable
     # scope, role paths, plugin runners) that the engine cannot know about.
     property host_context : HostContext?
+    # Lazy variable source consulted after every scope and before globals.
+    property resolver : VariableResolver?
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
@@ -33,6 +35,7 @@ module KrikriJinja
       @hide_super = false
       @loop_is_local = true
       @host_context = nil.as(HostContext?)
+      @resolver = nil.as(VariableResolver?)
     end
 
     def [](name : String) : AnyValue
@@ -63,6 +66,9 @@ module KrikriJinja
         end
       end
       return undefined_named(name) if @hide_loop_var && name == "loop"
+      if (resolver = @resolver) && (value = resolver.resolve(name))
+        return value
+      end
       @globals[name]?
     end
 
@@ -71,12 +77,21 @@ module KrikriJinja
       !!(v && !v.raw.is_a?(Undefined))
     end
 
+    # A fully-qualified collection name (`ansible.builtin.ternary`,
+    # namespace.collection.name) resolves to the filter or test registered
+    # under its trailing segment, the way Ansible resolves
+    # `| ansible.builtin.ternary(...)` to `ternary`. A single dot is not a
+    # collection name (`x | first.to_s` stays unknown, as in jinja).
     def filter(name : String) : FilterFn?
-      @filters[name]?
+      @filters[name]? || collection_member(name).try { |short| @filters[short]? }
     end
 
     def test(name : String) : TestFn?
-      @tests[name]?
+      @tests[name]? || collection_member(name).try { |short| @tests[short]? }
+    end
+
+    private def collection_member(name : String) : String?
+      name.count('.') >= 2 ? name.rpartition('.')[2] : nil
     end
 
     def []=(name : String, value : AnyValue)

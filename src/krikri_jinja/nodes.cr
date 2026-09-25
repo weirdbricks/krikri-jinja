@@ -46,6 +46,15 @@ module KrikriJinja
   abstract class HostContext
   end
 
+  # Supplies variables on demand, for hosts whose variable scope is large or
+  # whose values need host-side preparation before the engine can use them.
+  # A context consults its resolver for a name that no scope defines, before
+  # falling back to globals. Returning nil leaves the name to the globals and
+  # then to the engine's undefined value.
+  abstract class VariableResolver
+    abstract def resolve(name : String) : AnyValue?
+  end
+
   # Marker for undefined variables, mirroring Jinja's Undefined behavior:
   # stringifies to "", is falsy, fails `is none`, and raises on operations.
   class Undefined
