@@ -2419,6 +2419,82 @@ add("bool in tuple repr", "{{ (true, false) }}")
 add("chained getitem on tuple", "{{ ((1, 2), (3, 4))[0][1] }}")
 add("tojson with slash key", "{{ {'a/b': 1} | tojson }}")
 
+
+# ================= edge-case expansion (round 20) =================
+
+# --- filters: last coverage ----------------------------------------------------
+add("attr filter missing", "{{ users | attr('zz') | default('d') }}", {"users": [{"n": "a"}]})
+add("map attribute dotted error", "{{ users | map(attribute='n.x') | list | length }}", {"users": [{"n": {"x": 1}}]})
+add("sum attribute missing", "{{ items | sum(attribute='zz') }}", {"items": [{"v": 1}]})
+add("min attr missing", "{{ items | min(attribute='zz') | default('d') }}", {"items": [{"v": 1}]})
+add("sort attr missing error", "{{ items | sort(attribute='zz') }}", {"items": [{"v": 1}]})
+add("selectattr test arg via var", "{{ users | selectattr('n', 'eq', want) | map(attribute='n') | join(',') }}",
+    {"users": [{"n": "a"}, {"n": "b"}], "want": "a"})
+add("unique case sensitive", "{{ ['a', 'A'] | unique(case_sensitive=true) | join(',') }}")
+add("dictsort case sensitive kwarg", "{{ {'B': 1, 'a': 2} | dictsort(case_sensitive=true) | map('first') | join(',') }}")
+add("title keep spaces", "{{ ' a b ' | title }}|")
+add("urlencode percent", "{{ '%' | urlencode }}")
+add("striptags nested quotes", "{{ '<p title=\"x\">a</p>' | striptags }}")
+
+# --- string methods: final sweep ----------------------------------------------------
+add("str find negative end", "{{ 'abcd'.find('b', 0, -1) }}")
+add("str rfind negative start", "{{ 'abcd'.rfind('b', -3) }}")
+add("str split maxsplit big", "{{ 'a,b'.split(',', 10) | join('|') }}")
+add("str count full overlap", "{{ 'aaaa'.count('aaa') }}")
+add("str ljust exact", "{{ 'ab'.ljust(2, 'x') }}|")
+add("str zfill neg number", "{{ '-12'.zfill(5) }}")
+add("str expandtabs tab end", "{{ 'ab\\t'.expandtabs(4) }}|")
+add("str swapcase symbols", "{{ 'a!b'.swapcase() }}")
+add("str removeprefix unicode", "{{ 'h\u00e9llo'.removeprefix('h') }}")
+
+# --- loops: round 10 -------------------------------------------------------------------
+add("recursive nested same attr", "{% for i in data recursive %}{{ i.v }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"v": 1, "c": [{"v": 2, "c": []}]}, {"v": 3, "c": []}]})
+add("loop.depth0 deep recursion", "{% for i in data recursive %}{{ loop.depth0 }}{{ loop(i.c | default([])) }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("for over generator in var", "{% set g = [1,2] | map('string') %}{% for x in g %}{{ x }}{% endfor %}")
+add("loop.cycle three items", "{% for i in [1,2,3,4] %}{{ loop.cycle('a', 'b', 'c') }}{% endfor %}")
+
+# --- macros: round 9 ---------------------------------------------------------------------
+add("macro recursive sum", "{% macro r(n, acc=0) %}{{ r(n - 1, acc + n) if n > 0 else acc }}{% endmacro %}{{ r(4) }}")
+add("macro with caller param default", "{% macro m(caller=none) %}{{ caller is none }}{% endmacro %}{{ m() }}")
+add("macro call kwargs extra error", "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(1, z=9) }}")
+
+# --- inheritance: round 15 ------------------------------------------------------------------
+add("include inside include", "{% include 'a.html' %}", templates={
+    "a.html": "A{% include 'b.html' %}",
+    "b.html": "B"})
+add("extends with include in parent", "{% extends 'base.html' %}{% block b %}C{% endblock %}", templates={
+    "base.html": "{% include 'p.html' %}{% block b %}B{% endblock %}",
+    "p.html": "P"})
+add("import same module twice", "{% import 'm.html' as m %}{% import 'm.html' as n %}{{ m.v }}{{ n.v }}", templates={
+    "m.html": "{% set v = 'V' %}"})
+
+# --- whitespace: round 16 ----------------------------------------------------------------------
+add("lstrip tab indent", "x\n\t{% if true %}y{% endif %}", lstrip_blocks=True)
+add("marker var end right", "{{ 'x' -}}\n y")
+add("trim nested blocks mixed", "{% if true %}\n{% set x = 1 %}\n{{ x }}\n{% endif %}", trim_blocks=True)
+
+# --- numbers: round 16 ----------------------------------------------------------------------------
+add("float int compare huge", "{{ 1e15 == 1000000000000000 }}")
+add("neg pow odd", "{{ (-3) ** 3 }}")
+add("floor div toward neg inf", "{{ -1 // 2 }} {{ -0.5 // 1 }}")
+add("mod same sign", "{{ 7 % 3 }} {{ -7 % -3 }}")
+add("pow zero neg", "{{ 0 ** -1 }}")
+add("big add then compare", "{{ 9223372036854775807 + 1 > 9223372036854775807 }}")
+
+# --- misc: round 15 -----------------------------------------------------------------------------------
+add("autoescape nested set filter", "{% set x %}<b>{% endset %}{{ x | upper | trim }}", autoescape=True)
+add("namespace across include", "{% set ns = namespace(v=1) %}{% include 'p.html' %}{{ ns.v }}", templates={
+    "p.html": "{% set ns.v = 2 %}"})
+add("dict value markup autoescape", "{{ {'k': '<v>'} }}", autoescape=True)
+add("filter chain with test", "{{ [1,2,3] | select('odd') | list | first is eq 1 }}")
+add("concat with markup tuple", "{{ ('<x>' | safe) ~ (1,) }}", autoescape=False)
+add("escape in urlize text", "{{ 'see <b> http://x.com' | urlize }}")
+add("deeply nested tuple in dict in list", "{{ [{'k': (1, (2,))}] }}")
+add("long chain getitem attr", "{{ d.a['b'].c }}", {"d": {"a": {"b": {"c": "v"}}}})
+add("loop var after recursive", "{% for i in [1] recursive %}{% endfor %}{{ loop | default('d') }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
