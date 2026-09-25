@@ -1355,10 +1355,17 @@ module KrikriJinja
       expr.negated ? !result : result
     end
 
+    # Ansible's own Undefined is CHAINABLE: reaching an attribute of an
+    # undefined value yields another undefined rather than raising on the
+    # spot, so a fallback like `x | default(other.thing.y)` stays lazy when
+    # `x` is defined. Using the chain (stringify/compare/iterate) is what
+    # raises, naming the variable the chain started from.
     private def eval_getattr(expr : Nodes::GetattrNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new(KrikriJinja.undefined_message(obj.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined)
+        undefined = obj.raw.as(Undefined)
+        return @ctx.undefined_named(undefined.name || expr.attr || "value") if undefined.chainable
+        raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
       get_attr(obj, expr.attr) || AnyValue.new(@ctx.undefined)
     end
@@ -1366,7 +1373,9 @@ module KrikriJinja
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
-        raise TemplateError.new(KrikriJinja.undefined_message(obj.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined)
+        undefined = obj.raw.as(Undefined)
+        return @ctx.undefined_named(undefined.name || "value") if undefined.chainable
+        raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
       result = case raw = obj.raw

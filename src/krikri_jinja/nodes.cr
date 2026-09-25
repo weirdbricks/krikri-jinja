@@ -50,8 +50,13 @@ module KrikriJinja
   # stringifies to "", is falsy, fails `is none`, and raises on operations.
   class Undefined
     property name : String?
+    # Ansible's own Undefined is CHAINABLE: reaching an attribute or item of
+    # an undefined value yields another undefined instead of raising, so
+    # `x | default(other.thing.y)` stays lazy when `x` is defined. Jinja2's
+    # own default is not chainable and raises on the spot.
+    property chainable : Bool
 
-    def initialize(@name : String? = nil)
+    def initialize(@name : String? = nil, @chainable : Bool = false)
     end
 
     def strict? : Bool
@@ -68,9 +73,19 @@ module KrikriJinja
   end
 
   class StrictUndefined < Undefined
+    def initialize(@name : String? = nil, @chainable : Bool = false)
+      super(@name, @chainable)
+    end
+
     def strict? : Bool
       true
     end
+  end
+
+  # Ansible's strict undefined: raises when an undefined value is USED, and
+  # chains through attribute/subscript access on the way there.
+  def self.ansible_strict_undefined : StrictUndefined
+    StrictUndefined.new(nil, chainable: true)
   end
 
   # The message real Jinja2/Ansible reports names the variable that was

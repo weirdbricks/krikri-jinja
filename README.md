@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.6)
+## Status (v0.4.7)
 
 Implemented:
 
@@ -180,6 +180,12 @@ every registered filter, test, and function it invokes, including inside
 includes, imports, and macros.
 
 ### Undefined versus null
+
+`KrikriJinja.ansible_strict_undefined` is Ansible's own strict undefined:
+it raises when an undefined value is used, and chains through attribute and
+subscript access on the way there, so `x | default(other.thing.y)` stays lazy
+when `x` is defined. Plain `StrictUndefined` keeps Jinja2's non-chaining
+behavior.
 
 Strict-undefined failures now name the variable that was missing
 ("'missing_thing' is undefined"), matching real Ansible's own message.
