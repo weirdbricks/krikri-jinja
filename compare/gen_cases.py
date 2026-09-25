@@ -1611,6 +1611,104 @@ add("chained method call on filter result", "{{ ' ab '.strip().upper() }}")
 add("boolean kwargs truthy", "{{ [1,2] | batch(2, fill_with=0) | first | join(',') }}")
 add("long template stress", "{% for i in range(3) %}{% if i % odd %}{{ i }}{% endif %}{% endfor %}")
 
+
+# ================= edge-case expansion (round 10) =================
+
+# --- string methods: final edges ---------------------------------------------
+add("str find max range", "{{ 'aaaa'.find('aa', 0, 3) }} {{ 'aaaa'.rfind('aa') }}")
+add("str count end only", "{{ 'abab'.count('ab', 0, 3) }}")
+add("str split keep empties", "{{ 'a,,b'.split(',') | join('|') }}")
+add("str strip empty chars", "{{ 'abc'.strip('') }}")
+add("str title apostrophe", "{{ \"o'brien\".title() }}")
+add("str isupper mixed digit", "{{ 'A1'.isupper() }} {{ 'a1'.islower() }}")
+add("str partition empty str", "{{ ''.partition('x') | join('|') }}")
+add("str expandtabs tabs only", "{{ '\\t\\t'.expandtabs(2) }}|")
+add("str zfill width neg", "{{ '5'.zfill(-1) }}")
+add("str startswith multi args", "{{ 'abc'.startswith('x') }} {{ 'abc'.endswith('') }}")
+add("str casefold already lower", "{{ 'abc'.casefold() }}")
+add("str rsplit sep only", "{{ 'a,,b'.rsplit(',') | join('|') }}")
+
+# --- filters: final edges -----------------------------------------------------
+add("unique all same", "{{ [1,1,1] | unique | join(',') }}")
+add("sort empty attr", "{{ [] | sort(attribute='x') | length }}")
+add("min max single", "{{ [5] | min }} {{ [5] | max }}")
+add("batch equal size", "{% for r in [1,2] | batch(2) %}[{{ r | join(',') }}]{% endfor %}")
+add("slice more than items", "{% for c in [1] | slice(5) %}[{{ c | join(',') }}]{% endfor %}")
+add("map attribute on tuple", "{{ [(1, 'a')] | map(attribute='0') | join(',') }}")
+add("selectattr false attr", "{{ users | selectattr('ok') | length }}", {"users": [{"ok" : False}]})
+add("groupby empty", "{% for g in [] | groupby('k') %}x{% endfor %}|")
+add("join markup sep", "{{ ['a'] | join('<b>') }}", autoescape=False)
+add("tojson deep indent", "{{ {'a': {'b': {'c': 1}}} | tojson(indent=4) }}")
+add("trim only end chars", "{{ 'xxax' | trim('x') }}")
+add("striptags comment", "{{ 'a<!-- c -->b' | striptags }}")
+add("striptags br", "{{ 'a<br/>b' | striptags }}")
+add("wordcount unicode", "{{ 'h\u00e9llo w' | wordcount }}")
+add("filesizeformat float", "{{ 1536.0 | filesizeformat }}")
+add("urlencode dict multi", "{{ {'a': 1, 'b': 2} | urlencode }}")
+add("center negative width", "{{ 'ab' | center(-1) }}")
+add("indent negative", "{{ 'a\\nb' | indent(-1) }}|")
+
+# --- tests: final ---------------------------------------------------------------
+add("test in nested list", "{{ [1] is in [[1]] }} {{ 1 is in [[1]] }}")
+add("test eq containers", "{{ [1] is eq [1] }} {{ (1,) is eq [1] }}")
+add("test divisibleby float", "{{ 4.0 is divisibleby 2 }}")
+add("test even float", "{{ 2.0 is even }}")
+add("test mapping tuple", "{{ (1,) is mapping }}")
+add("test defined on method", "{{ 'a'.upper is defined }}")
+add("test sameas tuple", "{{ (1,) is sameas (1,) }}")
+add("test ne containers", "{{ {'a': 1} is ne {'b': 2} }}")
+
+# --- loops: final -----------------------------------------------------------------
+add("loop index in recursive leaf", "{% for i in data recursive %}{{ loop.index }}{{ loop(i.c) if i.c }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}]})
+add("for else filtered nonzero", "{% for x in [1,2] if false %}x{% else %}e{% endfor %}")
+add("loop variable leak check", "{% for i in [1] %}{% endfor %}{{ i | default('d') }}")
+add("loop cycle kwargs", "{% for i in [1,2] %}{{ loop.cycle('a', 'b') }}{% endfor %}")
+add("for unpack string", "{% for a, b in ['ab'] %}{{ a }}{{ b }}{% endfor %}")
+add("deep nested for three", "{% for a in [1] %}{% for b in [2] %}{% for c in [3] %}{{ a }}{{ b }}{{ c }}{% endfor %}{% endfor %}{% endfor %}")
+
+# --- macros / call: final -----------------------------------------------------------
+add("macro arg default references param", "{% macro m(a, b=a ~ 'x') %}{{ b }}{% endmacro %}{{ m('v') }} {{ m('v', 'w') }}")
+add("macro calls varargs join", "{% macro m() %}{{ varargs | join('-') }}{% endmacro %}{{ m('a', 'b') }}")
+add("caller with args from macro", "{% macro m(v) %}{{ caller(v) }}{% endmacro %}{% call m(x) %}[{{ x }}]{% endcall %}")
+add("macro self reference name", "{% macro fact(n) %}{{ n if n < 2 else n * fact(n - 1) }}{% endmacro %}{{ fact(4) }}")
+add("nested macro closures", "{% macro outer(x) %}{% macro inner(y) %}{{ x }}{{ y }}{% endmacro %}{{ inner(2) }}{% endmacro %}{{ outer(1) }}")
+
+# --- whitespace: final -----------------------------------------------------------------
+add("lstrip with marker only tag", "x\n  {%- if true %}y{% endif %}", lstrip_blocks=True)
+add("trim inside nested if", "{% if true %}\n{% if true %}\nx\n{% endif %}\n{% endif %}", trim_blocks=True)
+add("marker on endfor", "{% for i in [1] %}\na\n{% endfor -%}\nb")
+add("spaces around markers", "a  {{- 'b' -}}  c  {%- if true -%} d {%- endif -%}  e")
+
+# --- numbers: final ----------------------------------------------------------------------
+add("float nan compare", "{{ 1 / 0 == 1 / 0 }}")
+add("inf add", "{{ 1e308 + 1e308 }}")
+add("neg inf", "{{ -1e308 * 10 }}")
+add("big pow two", "{{ 2 ** 63 }}")
+add("mod neg float result", "{{ -5.5 % 2 }}")
+add("floor big", "{{ (1e15 + 0.5) | round(0) }}")
+add("sum big chain", "{{ [9223372036854775807, 9223372036854775807, 1] | sum }}")
+
+# --- errors: final -------------------------------------------------------------------------
+add("deep undefined chain error", "{{ a.b.c.d }}", {"a": {}})
+add("filter on int error", "{{ 5 | upper }}")
+add("test on undefined error", "{{ missing is eq 1 }}")
+add("slice str step float", "{{ 'abc'[::1.5] }}")
+add("call int attr", "{{ (5).foo() }}")
+add("joiner in nested loop", "{% for a in [1] %}{% for b in [1,2] %}{% set j = joiner(',') %}{{ j() }}{{ b }}{% endfor %}{% endfor %}")
+
+# --- misc: final ----------------------------------------------------------------------------
+add("deep concat markup", "{{ ('<a>' | safe) ~ ('<b>' | safe) }}", autoescape=True)
+add("markup in tuple", "{{ ('<x>' | safe, 'y') }}", autoescape=True)
+add("nested filter block", "{% filter upper %}{% filter lower %}AB{% endfilter %}{% endfilter %}")
+add("set block with markup", "{% set x %}<b>{% endset %}{{ x }}{{ x | length }}", autoescape=True)
+add("ternary with filters", "{{ ('ab' | upper) if true else ('cd' | lower) }}")
+add("comment inside expression", "{{ 'a' ~ # x }}")
+add("dict method call chain", "{{ {'a': 'x'}.get('b', 'd').upper() }}")
+add("long attribute chain method", "{{ 'ab'.upper().lower().upper() }}")
+add("filter with expression arg", "{{ 'abc' | replace('a', 'b' | upper) }}")
+add("nested dict literal key expr", "{{ {('a' | upper): 1} }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
