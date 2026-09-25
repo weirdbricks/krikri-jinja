@@ -76,3 +76,29 @@ describe "KrikriJinja single-dot filter names" do
     end
   end
 end
+
+describe "KrikriJinja dict methods and finalize" do
+  it "copies and updates dicts like Python" do
+    KrikriJinja.render("{% set m = b.copy() %}{% set _ = m.update(o) %}{{ m }} {{ b }}",
+      {"b" => {"a" => 1, "b" => 2}, "o" => {"b" => 99}}).should eq("{'a': 1, 'b': 99} {'a': 1, 'b': 2}")
+  end
+
+  it "applies finalize to output only" do
+    engine = KrikriJinja::Engine.new
+    engine.finalize = ->(value : KrikriJinja::AnyValue) { value.raw.nil? ? KrikriJinja::AnyValue.new("") : value }
+    node = KrikriJinja::Parser.parse("a{{ none }}b{{ [none] }}", engine.options)
+    engine.render_parsed(node).should eq("ab[None]")
+  end
+end
+
+describe "KrikriJinja dict pair unpacking" do
+  it "iterates a dict's pairs for two loop targets only when enabled" do
+    engine = KrikriJinja::Engine.new
+    node = KrikriJinja::Parser.parse("{% for k, v in d %}{{ k }}={{ v }};{% endfor %}", engine.options)
+    variables = {"d" => KrikriJinja.wrap_value({"a" => 1, "b" => 2})}
+    expect_raises(KrikriJinja::TemplateError) { engine.render_parsed(node, variables) }
+    engine.dict_pair_unpacking = true
+    engine.render_parsed(node, variables).should eq("a=1;b=2;")
+    engine.render_parsed(KrikriJinja::Parser.parse("{% for k in d %}{{ k }}{% endfor %}", engine.options), variables).should eq("ab")
+  end
+end

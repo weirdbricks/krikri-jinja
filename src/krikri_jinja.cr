@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.11"
+  VERSION = "0.4.12"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -271,6 +271,8 @@ module KrikriJinja
                          undefined : Undefined = Undefined.new,
                          host_context : HostContext? = nil) : Engine
     copy = Engine.new(loader, {} of String => AnyV, options, false, undefined, host_context)
+    copy.finalize = default_engine.finalize
+    copy.dict_pair_unpacking = default_engine.dict_pair_unpacking
     default_engine.globals.each { |key, value| copy.globals[key] = value }
     default_engine.filters.each { |key, value| copy.filters[key] = value }
     default_engine.tests.each { |key, value| copy.tests[key] = value }

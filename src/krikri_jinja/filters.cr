@@ -1310,6 +1310,28 @@ module KrikriJinja
         AnyValue.new(KrikriJinja::SimpleCallable.new("items") do |_a, _k, _c|
           AnyValue.new(raw.map { |k, x| AnyValue.new(TupleValue.new([KrikriJinja.decode_key(k), x])) })
         end)
+      when "copy"
+        AnyValue.new(KrikriJinja::SimpleCallable.new("copy") do |_a, _k, _c|
+          AnyValue.new(raw.dup)
+        end)
+      when "update"
+        # dict.update(other, **kwargs) mutates in place and returns None.
+        AnyValue.new(KrikriJinja::SimpleCallable.new("update") do |args, kwargs, _c|
+          if other = args[0]?
+            case other_raw = other.raw
+            when Hash then other_raw.each { |key, value| raw[key] = value }
+            when Array
+              other_raw.each do |pair|
+                items = KrikriJinja.to_iterable(pair)
+                raise TemplateError.new("dictionary update sequence element has length #{items.size}; 2 is required", 0) unless items.size == 2
+                raw[KrikriJinja.dict_key(items[0])] = items[1]
+              end
+            else raise TemplateError.new("#{other_raw.class} object is not iterable", 0)
+            end
+          end
+          kwargs.each { |key, value| raw[KrikriJinja.dict_key(AnyValue.new(key))] = value }
+          AnyValue.new(nil)
+        end)
       when "get"
         AnyValue.new(KrikriJinja::SimpleCallable.new("get") do |args, _k, _c|
           key = args[0]
