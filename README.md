@@ -65,8 +65,10 @@ Implemented on top of v0.1.0:
 Not yet implemented: `{% trans %}` / i18n (out of scope), `spaceless`,
 `debug` tag, custom filter/test classes beyond hash registration,
 `StrictUndefined` semantics (undefined is nil-based), `truncate`
-`nowrap`, `groupby` secondary sort guarantees, and `wordwrap`
-`break_long_words` tuning.
+`nowrap`, `groupby` secondary sort guarantees, `wordwrap`
+`break_long_words` tuning, and complex results from negative fractional
+powers such as `-5 ** 2.5`. Integers beyond `Int64` use a dedicated runtime
+value type, so digit-shaped strings remain ordinary strings.
 
 ## Usage
 
@@ -87,10 +89,10 @@ python3 + jinja2) and this engine, then diffs the outputs byte for byte:
 
 ```bash
 ./compare/run.sh
-# total: 140  identical: 140  both-error: 0  divergent: 0
+# total: 1972  identical: 1736  both-error: 236  divergent: 0
 ```
 
-- `compare/gen_cases.py` generates `cases.json` (140 cases: literals,
+- `compare/gen_cases.py` generates `cases.json` (1972 cases: literals,
   arithmetic, filters, tests, statements, whitespace control, raw,
   inheritance/includes/imports, autoescape, recursive loops)
 - `compare/render.py` renders with real Jinja2 (same environment defaults:
@@ -106,11 +108,14 @@ filters binding tighter than unary minus, `map('filtername')` dispatch,
 `sprintf`, string methods (`replace`, `split`, ...), tuple repr for
 `dictsort`/`items`, Python-style `urlencode`, `slice` padding to the
 longest column, `sum(start=)`, `indent(2, true)`, scientific-notation
-literals, and `{% raw %}` scanning past embedded `{%`.
+literals, `{% raw %}` scanning past embedded `{%`, CPython string-repr
+escaping, CPython `%`-format argument rules, lazy `slice` iteration,
+and the constant-folding precedence trap for negative-literal-base `**`
+expressions.
 
 ## Development
 
 ```bash
-crystal spec        # run the unit/integration suite (70 specs)
-./compare/run.sh    # differential test against real Jinja2 (140 cases)
+crystal spec        # run the unit/integration suite (184 specs)
+./compare/run.sh    # differential test against real Jinja2 (1972 cases)
 ```

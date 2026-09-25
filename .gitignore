@@ -3,3 +3,5 @@ lib/
 bin/
 d.cr
 *.dwarf
+tmpdbg/
+__pycache__/
