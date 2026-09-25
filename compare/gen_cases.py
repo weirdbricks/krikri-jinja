@@ -1820,6 +1820,82 @@ add("deep method chain string", "{{ 'a b'.split()[0].upper() }}")
 add("test arg with parens", "{{ 4 is divisibleby (2) }}")
 add("multiline expression in var", "{{\n 1 +\n 2\n}}")
 
+
+# ================= edge-case expansion (round 12) =================
+
+# --- filter kwarg coverage round 2 ------------------------------------------
+add("map default pos kwarg mix", "{{ users | map(attribute='a', 'x') | join(',') }}", {"users": [{"a": 1}]})
+add("batch zero", "{{ [1] | batch(0) | length }}")
+add("slice one", "{% for c in [1,2] | slice(1) %}[{{ c | join(',') }}]{% endfor %}")
+add("truncate zero end", "{{ 'abcd' | truncate(2, true, '', 0) }}")
+add("wordwrap width exact", "{{ 'ab cd' | wordwrap(5) }}|")
+add("round prec bool", "{{ 1.6 | round(precision=0) }}")
+add("filesizeformat base2 kwarg", "{{ 2048 | filesizeformat(true) }} {{ 2048 | filesizeformat(false) }}")
+add("urlencode for_qs kwarg", "{{ {'a': 'b/c'} | urlencode(for_qs=true) }}")
+add("default boolean pos", "{{ 0 | default('d', true) }} {{ '' | default('d', true) }}")
+add("indent width kwarg", "{{ 'a\\nb' | indent(width=1, first=true) }}|")
+add("int default kwarg", "{{ 'zz' | int(default=3) }}")
+add("float default kwarg", "{{ 'zz' | float(default=1.5) }}")
+
+# --- loop / recursive edge ------------------------------------------------------
+add("recursive loop index reset", "{% for i in data recursive %}{{ loop.index }}{{ loop(i.c) if i.c }}{% endfor %}",
+    {"data": [{"c": [{"c": []}]}, {"c": []}]})
+add("loop depth after recursive call", "{% for i in data recursive %}{{ loop.depth }}{% for j in i.c %}{{ loop.depth }}{% endfor %}{% endfor %}",
+    {"data": [{"c": [{}]}]})
+add("for over generator with test", "{% for x in [1,2,3] | select('odd') %}{{ x }}{% endfor %}")
+add("loop cycle arg mismatch", "{% for i in [1] %}{{ loop.cycle() }}{% endfor %}")
+add("loop changed no args", "{% for i in [1] %}{{ loop.changed() }}{% endfor %}")
+
+# --- macro/caller edge: round 3 ---------------------------------------------------
+add("macro default undefined expr", "{% macro m(a=missing | default('d')) %}{{ a }}{% endmacro %}{{ m() }}")
+add("macro kwargs merge order", "{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(1, b=2) }}")
+add("macro varargs spread call", "{% macro m(a, b) %}{{ a }}{{ b }}{% endmacro %}{{ m(*[1, 2]) }}")
+add("caller inside caller", "{% macro outer() %}{{ caller() }}{% endmacro %}{% call outer() %}x{% endcall %}")
+add("macro defined in loop scope", "{% for i in [1,2] %}{% if i == 1 %}{% macro m() %}M1{% endmacro %}{% endif %}{{ m() }}{% endfor %}")
+
+# --- inheritance: round 7 ------------------------------------------------------------
+add("extends after content error", "x{% extends 'base.html' %}", templates={"base.html": "{% block b %}B{% endblock %}"})
+add("block required empty ok", "{% extends 'base.html' %}{% block b required %}{% endblock %}", templates={
+    "base.html": "{% block b %}D{% endblock %}"})
+add("include recursive self safe", "{% include 'a.html' %}", templates={"a.html": "A{% set stop = true %}"})
+add("child block without parent block", "{% extends 'base.html' %}{% block other %}O{% endblock %}", templates={
+    "base.html": "B"})
+add("super in second block", "{% extends 'base.html' %}{% block a %}{{ super() }}{% endblock %}{% block b %}{{ super() }}{% endblock %}", templates={
+    "base.html": "{% block a %}A{% endblock %}{% block b %}B{% endblock %}"})
+
+# --- whitespace: round 8 ----------------------------------------------------------------
+add("marker on endif nested", "{% if true %}a\n{%- endif %}b")
+add("lstrip marker plus", "x\n  {%+ if true %}y{% endif %}", lstrip_blocks=True)
+add("trim after var tag", "{{ 'x' }}\ny", trim_blocks=True)
+add("marker in nested blocks", "{% if true -%}\n{% for i in [1] -%}\n{{ i }}\n{%- endfor %}\n{%- endif %}")
+
+# --- numbers / operators: round 8 ----------------------------------------------------------
+add("pow right assoc check", "{{ 2 ** 2 ** 3 }}")
+add("float eq bool", "{{ 1.0 == true }} {{ 0.0 == false }}")
+add("neg zero equal", "{{ -0 == 0 }} {{ -0.0 == 0.0 }}")
+add("div negative float", "{{ -7 / 2 }}")
+add("mod zero float", "{{ 1 % 0.0 }}")
+add("comparison mixed tuple", "{{ (1,) < (2,) }} {{ (2,) < (1,) }}")
+add("in on markup", "{{ 'a' in ('abc' | safe) }}")
+
+# --- errors: round 4 -------------------------------------------------------------------------
+add("unknown filter error", "{{ 1 | nosuchfilter }}")
+add("unknown test error", "{{ 1 is nosuchtest }}")
+add("unknown global error", "{{ nosuchglobal() }}")
+add("include missing no ignore", "{% include 'nope.html' %}")
+add("import missing error", "{% import 'nope.html' as m %}")
+add("div by zero error", "{{ 1 / 0 }}")
+add("mod by zero error", "{{ 1 % 0 }}")
+
+# --- misc: round 7 ------------------------------------------------------------------------------
+add("self reference in set", "{% set x = 1 %}{% set x = x + 1 %}{{ x }}")
+add("dict in dict in list repr", "{{ [{'a': {'b': [1]}}] }}")
+add("markup concat in tuple", "{{ ('<a>' | safe) ~ ('<b>' | safe) }}", autoescape=True)
+add("nested filter args with filters", "{{ 'aXb' | replace('X', 'y' | upper) }}")
+add("deep ternary chain", "{{ 'a' if false else 'b' if false else 'c' }}")
+add("loop var name shadow global", "{% set loop = 'x' %}{{ loop | default('d') }}")
+add("macro name reuse across blocks", "{% block a %}{% macro m() %}M{% endmacro %}{{ m() }}{% endblock %}{% block b %}{% macro m() %}N{% endmacro %}{{ m() }}{% endblock %}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
