@@ -423,34 +423,53 @@ describe KrikriJinja do
     end
   end
 
-  describe "parity: rounds 7-10" do
+  describe "parity: round 7" do
     it "centers with python padding rule" do
       KrikriJinja.render("{{ 'ab' | center(5) }}|").should eq("  ab |")
     end
-
     it "supports tuple dict keys" do
       KrikriJinja.render("{{ {(1, 2): 'v'} }}").should eq("{(1, 2): 'v'}")
     end
-
     it "rejects bare caller parameter" do
       expect_raises(KrikriJinja::TemplateError) do
         KrikriJinja.render("{% macro m(caller) %}{{ caller }}{% endmacro %}")
       end
     end
+  end
 
+  describe "parity: round 8" do
     it "treats 1 and True as the same dict key, first form wins" do
       KrikriJinja.render("{{ {1: 'a', true: 'b'}[1] }} {{ {1: 'a', true: 'b'}[true] }}").should eq("b b")
       KrikriJinja.render("{{ {true: 'a', 1: 'b'} }}").should eq("{True: 'b'}")
     end
-
     it "orders tuples lexicographically" do
       KrikriJinja.render("{{ [(2,), (1,)] | sort | join(',') }}").should eq("(1,),(2,)")
     end
-
     it "wraps with custom wrapstring positionally" do
       KrikriJinja.render("{{ 'a b c' | wordwrap(4, true, '--') }}").should eq("a b--c")
     end
+  end
 
+  describe "parity: round 9" do
+    it "exposes dict.get with default" do
+      KrikriJinja.render("{{ d.get('zz', 'none') }} {{ d.get('a') }}", {"d" => {"a" => 1}}).should eq("none 1")
+    end
+
+    it "urlizes case-variant schemes with an https prefix" do
+      KrikriJinja.render("{{ 'HTTP://X.COM' | urlize }}")
+        .should eq("<a href=\"https://HTTP://X.COM\" rel=\"noopener\">HTTP://X.COM</a>")
+      KrikriJinja.render("{{ 'ftp://files.com' | urlize }}").should eq("ftp://files.com")
+    end
+
+    it "hides super inside includes" do
+      KrikriJinja::Engine.new(KrikriJinja::DictLoader.new(
+        {"base.html" => "{% block b %}B{% endblock %}", "p.html" => "{{ super is defined }}"}
+      )).render_string("{% extends 'base.html' %}{% block b %}{% include 'p.html' %}{% endblock %}",
+        KrikriJinja.context({} of String => String)).should eq("False")
+    end
+  end
+
+  describe "parity: round 10" do
     it "renders inf and huge floats like python" do
       KrikriJinja.render("{{ 1e308 * 10 }} {{ 1e15 }}").should eq("inf 1000000000000000.0")
     end
@@ -477,11 +496,8 @@ describe KrikriJinja do
       KrikriJinja.render("{{ 'a\nb' | indent(-1) }}|").should eq("a
 b|")
     end
-
-    it "exposes dict.get with default" do
-      KrikriJinja.render("{{ d.get('zz', 'none') }} {{ d.get('a') }}", {"d" => {"a" => 1}}).should eq("none 1")
-    end
   end
+
   describe "parity: loop details" do
     it "resets depth for nested non-recursive loops" do
       KrikriJinja.render("{% for a in [1] %}{% for b in [2] %}{{ loop.depth }}{{ loop.depth0 }}{% endfor %}{% endfor %}").should eq("10")
