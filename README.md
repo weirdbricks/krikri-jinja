@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.7)
+## Status (v0.4.8)
 
 Implemented:
 
@@ -180,6 +180,12 @@ every registered filter, test, and function it invokes, including inside
 includes, imports, and macros.
 
 ### Undefined versus null
+
+Explicit `{%+ ... +%}` KEEP markers are supported: a tag closed with `+%}`
+does not eat the newline that follows it, even with `trim_blocks` enabled.
+
+`x in list` never raises for an undefined left operand; it reports False,
+matching Python and real Ansible.
 
 `KrikriJinja.ansible_strict_undefined` is Ansible's own strict undefined:
 it raises when an undefined value is used, and chains through attribute and
