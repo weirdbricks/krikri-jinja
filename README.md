@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.2.0)
+## Status (v0.3.0)
 
 Implemented:
 
@@ -21,24 +21,26 @@ Implemented:
 - Full expression grammar: arithmetic (`+ - * / // % **`), comparisons
   (including chained), `in` / `not in`, `is` / `is not` tests, `~` concat,
   filters with args/kwargs, attribute/item access, slicing (incl. step),
-  calls with args/kwargs, conditional expressions (`a if b else c`), list /
-  dict / tuple literals, adjacent string concatenation
+  calls with positional/keyword arguments and `*args` / `**kwargs` expansion,
+  conditional expressions (`a if b else c`), list / dict / tuple literals,
+  adjacent string concatenation
 - Statements: `if/elif/else`, `for` (with `if` filter, `else`, unpacking),
-  `set` (incl. `namespace` attribute assignment), `block`, `macro` (with
-  defaults), `call` (with `caller()`), `filter`, `with`, `include`
-  (`ignore missing`, `with/without context`), `extends`, `import`/`from
-  ... import`, `do`, `autoescape`
+  `set` (incl. `namespace` attribute assignment), `block` (incl. `super()`,
+  `required`, and `scoped` modifiers), `macro` (with defaults), `call` (with
+  `caller()`), `filter`, `with`, `include` (`ignore missing`, `with/without
+  context`), `extends`, `import`/`from ... import`, `do`, `autoescape`
 - `loop` variable: `index`, `index0`, `revindex`, `revindex0`, `first`,
   `last`, `length`, `previtem`, `nextitem`, `depth`, `depth0`
-- ~45 built-in filters (upper, lower, sort, map, select, groupby, batch,
-  slice, join, default, tojson, ...) and ~35 built-in tests
-- Globals: `range`, `dict`, `namespace`, `cycler`, `lipsum`
+- 54 built-in filters (upper, lower, sort, map, select, groupby, batch,
+  slice, join, default, tojson, ...) and 39 built-in tests
+- Globals: `range`, `dict`, `namespace`, `cycler`, `joiner`, `lipsum`
 - Template inheritance (multi-level `extends` + block override), includes,
   imports; `DictLoader` / `FileSystemLoader`
 - Python-style semantics: truthiness, `True == 1`, floor division/modulo
-  sign behavior, `None` stringification
+  sign behavior, `None` stringification, CPython string repr, and
+  arbitrary-precision integer arithmetic beyond `Int64`
 
-Implemented on top of v0.1.0:
+Additional compatibility features:
 
 - `{% raw %}` blocks (including `{%- raw -%}` marker forms)
 - Whitespace control: `{{- -}}`, `{%- -%}` markers, `trim_blocks`,
@@ -55,20 +57,22 @@ Implemented on top of v0.1.0:
 - `not` binds looser than comparisons (`not x in y` == `not (x in y)`)
 - Hex/octal/binary integer literals
 - Filters: `dictsort`, `filesizeformat`, `forceescape`, `center`, `random`,
-  `pprint`, `int(base=)`, `unique(attribute=)`, `format` with full
+  `pprint`, `urlize`, `int(base=)`, `unique(attribute=)`, `format` with full
   %-conversion support, `Markup`-aware `safe`/`escape` under autoescape
 - Tests: `escaped`, `filter`, `test`, `sameas`
 - `Engine#render(name)` for loader-based rendering, engine-level
   `autoescape`, and filter/test registration by mutating
   `BUILTIN_FILTERS` / `BUILTIN_TESTS`
 
-Not yet implemented: `{% trans %}` / i18n (out of scope), `spaceless`,
+Known gaps: `{% trans %}` / i18n (out of scope), `spaceless`,
 `debug` tag, custom filter/test classes beyond hash registration,
 `StrictUndefined` semantics (undefined is nil-based), `truncate`
 `nowrap`, `groupby` secondary sort guarantees, `wordwrap`
 `break_long_words` tuning, and complex results from negative fractional
-powers such as `-5 ** 2.5`. Integers beyond `Int64` use a dedicated runtime
-value type, so digit-shaped strings remain ordinary strings.
+powers such as `-5 ** 2.5`. Lazy filter generators are iterated by templates
+but do not reproduce Python's process-specific `<generator ... at 0x...>`
+repr. Integers beyond `Int64` use a dedicated runtime value type, so
+digit-shaped strings remain ordinary strings.
 
 ## Usage
 
@@ -85,22 +89,28 @@ engine.render_string("{% extends 'base.html' %}")
 ## Differential testing against real Jinja2
 
 `compare/` renders a shared case corpus with **both** real Jinja2 (via
-python3 + jinja2) and this engine, then diffs the outputs byte for byte:
+`python3` with the `jinja2` package installed) and this engine, then diffs
+the outputs byte for byte:
 
 ```bash
 ./compare/run.sh
-# total: 1972  identical: 1736  both-error: 236  divergent: 0
+# total: 1,972  identical: 1,736  both-error: 236  divergent: 0
 ```
 
-- `compare/gen_cases.py` generates `cases.json` (1972 cases: literals,
-  arithmetic, filters, tests, statements, whitespace control, raw,
-  inheritance/includes/imports, autoescape, recursive loops)
+- `compare/gen_cases.py` generates `cases.json` (1,972 cases: literals,
+  arbitrary-precision arithmetic, filters, tests, statements, string and
+  integer methods, whitespace control, raw blocks, inheritance/includes/
+  imports, autoescape, recursive loops, and fuzz-class regressions)
 - `compare/render.py` renders with real Jinja2 (same environment defaults:
   `trim_blocks=false`, `keep_trailing_newline=false`, default `Undefined`)
 - `compare/render.cr` renders with krikri-jinja
 - `compare/compare.py` diffs; both-error counts as compatible (the two
   engines use different exception vocabularies), one-ok-one-error or any
   output difference is a divergence
+- `compare/fuzz_run.sh` runs generated multi-round sweeps and reports each
+  completed seed. Render timeouts are reported as failed rounds while the
+  sweep continues; Python outputs containing generator memory addresses are
+  skipped, and any remaining addresses are normalized before comparison.
 
 This harness found and fixed: undefined rendering as "" (not "None"),
 filters binding tighter than unary minus, `map('filtername')` dispatch,
@@ -110,12 +120,15 @@ filters binding tighter than unary minus, `map('filtername')` dispatch,
 longest column, `sum(start=)`, `indent(2, true)`, scientific-notation
 literals, `{% raw %}` scanning past embedded `{%`, CPython string-repr
 escaping, CPython `%`-format argument rules, lazy `slice` iteration,
-and the constant-folding precedence trap for negative-literal-base `**`
-expressions.
+arbitrary-precision integer semantics, empty `Markup` falsiness, safe
+out-of-range negative indexing, bare test-argument and chained-`is`
+parsing, and the constant-folding precedence trap for negative-literal-base
+`**` expressions.
 
 ## Development
 
 ```bash
 crystal spec        # run the unit/integration suite (184 specs)
-./compare/run.sh    # differential test against real Jinja2 (1972 cases)
+./compare/run.sh    # differential test against real Jinja2 (1,972 cases)
+./compare/fuzz_run.sh 8 3000 1000  # 8 fuzz rounds, starting at seed 1001
 ```
