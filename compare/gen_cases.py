@@ -9,7 +9,17 @@ import json
 cases = []
 
 
+_seen_names = set()
+
+
 def add(name, template, data=None, templates=None, **env):
+    # duplicate names silently collapse in compare.py, hiding cases
+    if name in _seen_names:
+        i = 2
+        while f"{name}#{i}" in _seen_names:
+            i += 1
+        name = f"{name}#{i}"
+    _seen_names.add(name)
     case = {"name": name, "template": template, "data": data or {}}
     if templates:
         case["templates"] = templates
@@ -820,7 +830,7 @@ add("urlize basic", "{{ 'visit http://x.com now' | urlize }}")
 add("urlize www", "{{ 'see www.example.com here' | urlize }}")
 add("urlize email", "{{ 'mail a@b.com ok' | urlize }}")
 add("urlize plain", "{{ 'no links here' | urlize }}")
-add("wordcount", "{{ 'a b  c' | wordcount }} {{ '' | wordcount }}")
+add("wordcount r2", "{{ 'a b  c' | wordcount }} {{ '' | wordcount }}")
 add("batch then join", "{{ [1,2,3,4] | batch(2) | map('join', '-') | join('|') }}")
 add("slice join", "{{ [1,2,3] | slice(2) | map('join', '+') | join('|') }}")
 add("map test reject", "{{ ['a', 'bb', 'ccc'] | map('length') | join(',') }}")
@@ -829,7 +839,7 @@ add("attr selects combined", "{{ users | selectattr('active') | rejectattr('n', 
 add("items dictsort", "{{ {'b': 1, 'a': 2} | items | list | first | join(',') }}")
 add("first on tuple", "{{ (7, 8) | first }} {{ (7, 8) | last }}")
 add("reverse string", "{{ 'abc' | reverse }}")
-add("sort reverse", "{{ [3,1,2] | sort(reverse=true) | join(',') }}")
+add("sort reverse r2", "{{ [3,1,2] | sort(reverse=true) | join(',') }}")
 add("sort attribute numeric", "{{ users | sort(attribute='age') | map(attribute='n') | join(',') }}",
     {"users": [{"n": "a", "age": 3}, {"n": "b", "age": 1}]})
 add("sum bool", "{{ [true, true] | sum }}")
@@ -847,7 +857,7 @@ add("indent blank", "{{ 'a\\n\\nb' | indent(2) }}|")
 add("replace regex special", "{{ 'a+b' | replace('+', '-') }}")
 add("trim single char", "{{ 'xx' | trim('x') }}|")
 add("title filter digits", "{{ '2nd abc' | title }}")
-add("urlencode dict", "{{ {'a': 'b c', 'd': 'e&f'} | urlencode }}")
+add("urlencode dict r2", "{{ {'a': 'b c', 'd': 'e&f'} | urlencode }}")
 add("striptags nested", "{{ '<div><p>a</p> <b>b</b></div>' | striptags }}")
 add("wordwrap width 0", "{{ 'ab' | wordwrap(0) }}")
 
@@ -929,7 +939,7 @@ add("macro varargs length", "{% macro m() %}{{ varargs | length }}{% endmacro %}
 add("macro kwargs iterate", "{% macro m() %}{% for k in kwargs | dictsort %}{{ k[0] }}={{ k[1] }};{% endfor %}{% endmacro %}{{ m(b=2, a=1) }}")
 add("macro param default filter", "{% macro m(a='x' | upper) %}{{ a }}{% endmacro %}{{ m() }}")
 add("macro passes kwargs through", "{% macro m(a) %}{{ a }}{% endmacro %}{{ m(a=9) }}")
-add("macro nested call", "{% macro outer() %}[{{ caller('A') }}]{% endmacro %}{% call outer(x) %}<{{ x }}>{% endcall %}")
+add("macro nested call r2", "{% macro outer() %}[{{ caller('A') }}]{% endmacro %}{% call outer(x) %}<{{ x }}>{% endcall %}")
 add("macro recursion depth", "{% macro r(n) %}{{ n }}{% if n > 0 %}{{ r(n - 1) }}{% endif %}{% endmacro %}{{ r(3) }}")
 add("macro in if defined later", "{% if true %}{% macro m() %}M{% endmacro %}{{ m() }}{% endif %}")
 add("call with args unused", "{% macro m(a, b) %}{{ a }}-{{ b }}{% endmacro %}{% call(1, 2) m(1, 2) %}c{% endcall %}")
@@ -944,7 +954,7 @@ add("super in middle only", "{% extends 'mid.html' %}{% block b %}C+{{ super() }
     "mid.html": "{% extends 'base.html' %}{% block b %}M({{ super() }}){% endblock %}"})
 add("include with context", "{% set v = 'cv' %}{% include 'p.html' %}", {"x": "dv"}, templates={
     "p.html": "{{ x | default('none') }}"})
-add("include without context", "{% include 'p.html' without context %}", {"x": "dv"}, templates={
+add("include without context r2", "{% include 'p.html' without context %}", {"x": "dv"}, templates={
     "p.html": "{{ x | default('none') }}"})
 add("include ignore missing single", "{% include 'nope.html' ignore missing %}ok")
 add("import set from module", "{% import 'm.html' as m %}{{ m.v }}", templates={
@@ -1043,7 +1053,7 @@ add("list compare eq", "{{ [1, 2] == [1, 2] }} {{ [1] == [2] }} {{ [1] == 'x' }}
 add("dict compare eq", "{{ {'a': 1} == {'a': 1} }} {{ {'a': 1} == {'a': 2} }}")
 add("list compare lt", "{{ [1, 2] < [2] }} {{ [2] < [1, 2] }}")
 add("tuple compare eq", "{{ (1, 2) == (1, 2) }} {{ (1,) == (1, 2) }}")
-add("string compare", "{{ 'a' < 'b' }} {{ 'b' < 'a' }} {{ 'A' < 'a' }}")
+add("string compare r2", "{{ 'a' < 'b' }} {{ 'b' < 'a' }} {{ 'A' < 'a' }}")
 add("nested in tuple", "{{ 2 in (1, 2) }}")
 add("dictsort tuple repr", "{{ {'a': 1} | dictsort }}")
 add("items tuple repr", "{{ {'a': 1} | items | list }}")
@@ -1121,7 +1131,7 @@ add("comment unclosed error", "{# c }}x")
 add("percent in text", "100% done")
 add("brace in text", "a { b } c")
 add("lone opener", "a { b")
-add("deep nesting", "{% if true %}{% if true %}{% if true %}x{% endif %}{% endif %}{% endif %}")
+add("deep nesting r2", "{% if true %}{% if true %}{% if true %}x{% endif %}{% endif %}{% endif %}")
 add("deep nested lists", "{{ [[[[1]]]] }}")
 add("deep nested dicts", "{{ {'a': {'b': {'c': {'d': 1}}}} | tojson }}")
 
@@ -1176,7 +1186,7 @@ add("replace none", "{{ none | replace('a', 'b') }}")
 add("length none", "{{ none | length }}")
 add("first none", "{{ none | first }}")
 add("list none", "{{ none | list }}")
-add("join none", "{{ none | join(',') }}")
+add("join none r2", "{{ none | join(',') }}")
 add("sort none", "{{ none | sort }}")
 add("reverse none", "{{ none | reverse }}")
 add("escape none", "{{ none | escape }}")
@@ -1441,7 +1451,7 @@ add("loop index0 last combo", "{% for i in [1,2] %}{{ loop.index0 }}{{ loop.last
 add("loop revindex0", "{% for i in [1,2,3] %}{{ loop.revindex0 }}{% endfor %}")
 add("loop depth recursive triple", "{% for i in data recursive %}{{ loop.depth }}{{ loop(i.c) if i.c }}{% endfor %}",
     {"data": [{"c": [{"c": []}]}]})
-add("recursive loop length", "{% for i in [1] recursive %}{{ loop.length }}{{ loop([2]) if false }}{% endfor %}")
+add("recursive loop length r2", "{% for i in [1] recursive %}{{ loop.length }}{{ loop([2]) if false }}{% endfor %}")
 add("for filtered with loop", "{% for i in [1,2,3] if i != 2 %}{{ loop.index }}:{{ i }} {% endfor %}")
 add("for filtered length", "{% for i in [1,2,3] if i != 2 %}{{ loop.length }}{% endfor %}")
 add("nested for with same var", "{% for i in [1,2] %}{% for i in [3] %}{{ i }}{% endfor %}{{ i }}{% endfor %}")
@@ -1904,7 +1914,7 @@ add("pprint", "{{ {'a': 1} | pprint }}")
 add("format dict access", "{{ '%s' | format(d) }}", {"d": {"a": 1}})
 add("attr filter", "{{ users | attr('n') | join(',') }}", {"users": [{"n": "a"}]})
 add("map attribute int", "{{ [(1, 'a')] | map(attribute=1) | join(',') }}")
-add("batch attr", "{% for r in users | batch(2, {'n': 'x'}) %}[{{ r | map(attribute='n') | join(',') }}]{% endfor %}",
+add("batch attr r2", "{% for r in users | batch(2, {'n': 'x'}) %}[{{ r | map(attribute='n') | join(',') }}]{% endfor %}",
     {"users": [{"n": "a"}, {"n": "b"}, {"n": "c"}]})
 add("slice attr", "{% for c in users | slice(2) | map('map', ...) %}x{% endfor %}", {"users": []})
 add("tojson sorted deep", "{{ {'b': {'d': 1, 'c': 2}} | tojson }}")
@@ -2369,8 +2379,8 @@ add("indent none first", "{{ 'a\\nb' | indent(2, none) }}|")
 # --- undefined: operator sweep ------------------------------------------------------
 add("undefined concat rev", "{{ missing ~ 1 }}")
 add("undefined contains", "{{ 'a' in missing }}")
-add("undefined in tuple", "{{ missing in (1,) }}")
-add("undefined tojson nested", "{{ [missing] | tojson }}")
+add("undefined in tuple r2", "{{ missing in (1,) }}")
+add("undefined tojson nested r2", "{{ [missing] | tojson }}")
 add("undefined first", "{{ missing | first | default('d') }}")
 add("undefined reverse", "{{ missing | reverse | first | default('d') }}")
 
@@ -2557,6 +2567,96 @@ add("p57", "{{ 'x' if true else 'y' }}")
 add("p58", "{{ 1.0 }} {{ -0.0 }} {{ 1e3 }}")
 add("p59", "{% set ns = namespace(v=1) %}{% set ns.v = 2 %}{{ ns.v }}")
 add("p60", "{{ 'abcd' | slice(2) | map('join') | join('|') }}")
+
+
+# ================= fuzz-class parity (round 21) =================
+# big-int decimal strings repr unquoted inside containers
+add("bigint tuple repr", "{{ (9223372036854775808, 1) }}")
+add("bigint dict repr", "{{ {'k': 9223372036854775808} }}")
+add("bigint list repr", "{{ [9223372036854775808, 'a'] }}")
+# python string repr escapes tabs/newlines/backslashes
+add("tab in list repr", "{{ ['a\\tb'] }}")
+add("tab list filter", "{{ 'a\\tb' | list }}")
+add("quote repr both", '{{ [\'a"b\', "a\'b"] }}')
+add("backslash repr", "{{ ['a\\\\b'] }}")
+# empty Markup is falsy
+add("markup empty truthiness", "{{ missing | safe and () }}")
+add("markup empty or", "{{ (missing | safe) or 'Y' }}")
+# wordcount counts regex words
+add("wordcount float", "{{ 1.5 | wordcount }}")
+add("wordcount unicode", "{{ 'héllo wörld' | wordcount }}")
+add("wordcount punct", "{{ 'a.5 b' | wordcount }}")
+# % right operand kinds (CPython arg rules)
+add("pct str list", "{{ '<x>' % [1, 2] }}")
+add("pct str dict", "{{ '<x>' % {'a': 1} }}")
+add("pct str undefined", "{{ 'a.b' % missing }}")
+add("pct empty int error", "{{ '' % 5 }}")
+add("pct one of two error", "{{ '%s' % (1, 2) }}")
+add("pct str tuple error", "{{ 'abc' % (1,) }}")
+add("pct empty empty tuple", "{{ 'abc' % () }}")
+# big-int arithmetic and comparisons
+add("bigint mul int", "{{ 9223372036854775808 * 2 }}")
+add("bigint mul big", "{{ 9223372036854775808 * 9223372036854775808 }}")
+add("bigint floordiv", "{{ 9223372036854775808 // 2 }} {{ 9223372036854775808 // 3 }}")
+add("bigint mod", "{{ 9223372036854775808 % 5 }}")
+add("bigint neg floordiv", "{{ -9223372036854775808 // 3 }} {{ -9223372036854775808 % 3 }}")
+add("bigint add", "{{ 9223372036854775808 + 1 }}")
+add("bigint sub", "{{ 9223372036854775808 - 1 }}")
+add("bigint float mul", "{{ 9223372036854775808 * 0.1 }}")
+add("bigint float cmp", "{{ 0.0 > 9223372036854775808 }} {{ 9223372036854775808 < 1.5 }}")
+add("bigint pow", "{{ 9223372036854775808 ** 2 }}")
+add("bigint tests", "{{ 9223372036854775809 is odd }} {{ 9223372036854775808 is even }}")
+add("int pow overflow error", "{{ 2.5 ** 4611686018427387904 }}")
+add("tuple repeat", "{{ 0 * () }} {{ true * (1, 2) }}")
+add("huge neg index", "{{ 'aBc'[-4611686018427387904] }} {[1, 2][-4611686018427387904]}")
+# slice is lazy python-side: only compare consumed forms
+add("slice lazy not", "{{ not ([1, 2] | slice(0)) }}")
+# test argument binds as a primary; chained tests error
+add("bare test arg primary", "{{ 2 is eq 1 + 1 }} {{ 6 is divisibleby 3 * 1 }}")
+add("chained is error", "{{ 1 is even is odd }}")
+add("test then cond error", "{{ 1 is odd if 1 else 2 }}")
+# truncate type errors
+add("truncate int value error", "{{ 7 | truncate(3) }}")
+add("truncate tiny length error", "{{ 'abcdefghij' | truncate(1e-05) }}")
+add("truncate str length error", "{{ 'abcdefghij' | truncate('x') }}")
+add("truncate int end error", "{{ 'abcdefghij' | truncate(1000000, true, 7) }}")
+add("truncate float length error", "{{ 'abcdefghij' | truncate(3.5) }}")
+add("truncate short returns value", "{{ 'abc' | truncate(10) }}")
+add("truncate bool length error", "{{ 'abcdefghij' | truncate(true) }}")
+# center type errors
+add("center float error", "{{ 'x' | center(5.0) }}")
+add("center list error", "{{ 'x' | center([1]) }}")
+add("center extra arg error", "{{ 'x' | center(5, 7) }}")
+add("pow fold negative literal", "{{ -2 ** 2 }} {{ -2 ** p }}", {"p": 2})
+add("pow fold filter exponent", "{{ -5 ** ({}) | count }}")
+add("pct markup", "{{ ('<x>' | safe) % [1] }}")
+add("replace str args", "{{ 'a-b-c' | replace('-', 0) }}")
+add("replace str old error", "{{ 'a-b-c' | replace(0, '-') }}")
+add("join nonstring separator", "{{ ['a', 'b'] | join(0) }}")
+add("bigint filesizeformat", "{{ 9223372036854775808 | filesizeformat }}")
+add("bigint huge round precision", "{{ 1 | round(9223372036854775808) }}")
+add("bigint bool cmp", "{{ 9223372036854775808 > true }} {{ 9223372036854775808 == true }}")
+add("bigint tojson", "{{ 9223372036854775808 | tojson }}")
+add("repr newline escape", "{{ ['a\\nb', 'a\\rb', 'a\\x01b'] }}")
+add("round bool", "{{ true | round }} {{ false | round }}")
+add("center bool width", "{{ 'aBc' | center(true) }}")
+add("replace none args", "{{ 7 | replace(None, 0.1) }}")
+add("format invalid conversion", "{{ 'h%C3' | format }}")
+add("list bigint error", "{{ 9223372036854775808 | list }}")
+add("count bigint error", "{{ 9223372036854775808 | count }}")
+add("float key large", "{{ {'a': 1}[1e+20] }}")
+add("float floor division", "{{ true // 0.1 }} {{ 7 // 1e-05 }} {{ 2.5 // 1e-05 }} {{ -0.0 // 1.0 }}")
+add("int preserves bigint", "{{ 9223372036854775808 | int }}")
+add("truncate short hash unchanged", "{{ {'k': 10} | truncate(100.0) <= 'x' }}")
+add("empty array big repeat", "{{ [] * 9223372036854775807 }}")
+add("indent noninteger width", "{{ 'aBc' | indent('abc') }}")
+add("bigint times empty array", "{{ 9223372036854775808 * [] }}")
+add("bigint string result compare", "{{ 9223372036854775808 | replace(0.0, 0.1) < '  x  ' }}")
+add("fuzz bigint concat power", "{{ (9223372036854775807 ~ v) ** v }}", {"v": 5})
+add("fuzz conditional indent", "{{ (n[2] or (n is number == d|count) if s|indent('abc') else ('abc'|sum <= n|round({'k0':{'k0':0.0,'k1':9223372036854775807},'k1':7}))) }}", {"n": 2.5, "s": "aBc", "d": {"a": 1, "b": "x"}})
+add("fuzz bool power big exponent", "{{ (d is none ** 1) ** 9223372036854775808 }}", {"d": {"a": 1}})
+add("indent dict width error", "{{ 'héllo' | indent({'k0': none, 'k1': {}}) }}")
+add("indent dict conditional error", "{% if ([{'k': 'a'}, 'b', 0.5] if s|indent({}) else 'x') %}A{% else %}B{% endif %}", {"s": "aBc"})
 
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)

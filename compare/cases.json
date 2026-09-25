@@ -4077,7 +4077,7 @@
   "data": {}
  },
  {
-  "name": "wordcount",
+  "name": "wordcount r2",
   "template": "{{ 'a b  c' | wordcount }} {{ '' | wordcount }}",
   "data": {}
  },
@@ -4132,7 +4132,7 @@
   "data": {}
  },
  {
-  "name": "sort reverse",
+  "name": "sort reverse r2",
   "template": "{{ [3,1,2] | sort(reverse=true) | join(',') }}",
   "data": {}
  },
@@ -4253,7 +4253,7 @@
   "data": {}
  },
  {
-  "name": "urlencode dict",
+  "name": "urlencode dict r2",
   "template": "{{ {'a': 'b c', 'd': 'e&f'} | urlencode }}",
   "data": {}
  },
@@ -4610,7 +4610,7 @@
   "data": {}
  },
  {
-  "name": "macro nested call",
+  "name": "macro nested call r2",
   "template": "{% macro outer() %}[{{ caller('A') }}]{% endmacro %}{% call outer(x) %}<{{ x }}>{% endcall %}",
   "data": {}
  },
@@ -4665,7 +4665,7 @@
   }
  },
  {
-  "name": "include without context",
+  "name": "include without context r2",
   "template": "{% include 'p.html' without context %}",
   "data": {
    "x": "dv"
@@ -5095,7 +5095,7 @@
   "data": {}
  },
  {
-  "name": "string compare",
+  "name": "string compare r2",
   "template": "{{ 'a' < 'b' }} {{ 'b' < 'a' }} {{ 'A' < 'a' }}",
   "data": {}
  },
@@ -5436,7 +5436,7 @@
   "data": {}
  },
  {
-  "name": "deep nesting",
+  "name": "deep nesting r2",
   "template": "{% if true %}{% if true %}{% if true %}x{% endif %}{% endif %}{% endif %}",
   "data": {}
  },
@@ -5667,7 +5667,7 @@
   "data": {}
  },
  {
-  "name": "join none",
+  "name": "join none r2",
   "template": "{{ none | join(',') }}",
   "data": {}
  },
@@ -6772,7 +6772,7 @@
   }
  },
  {
-  "name": "recursive loop length",
+  "name": "recursive loop length r2",
   "template": "{% for i in [1] recursive %}{{ loop.length }}{{ loop([2]) if false }}{% endfor %}",
   "data": {}
  },
@@ -8724,7 +8724,7 @@
   "data": {}
  },
  {
-  "name": "batch attr",
+  "name": "batch attr r2",
   "template": "{% for r in users | batch(2, {'n': 'x'}) %}[{{ r | map(attribute='n') | join(',') }}]{% endfor %}",
   "data": {
    "users": [
@@ -10641,12 +10641,12 @@
   "data": {}
  },
  {
-  "name": "undefined in tuple",
+  "name": "undefined in tuple r2",
   "template": "{{ missing in (1,) }}",
   "data": {}
  },
  {
-  "name": "undefined tojson nested",
+  "name": "undefined tojson nested r2",
   "template": "{{ [missing] | tojson }}",
   "data": {}
  },
@@ -11513,5 +11513,407 @@
   "name": "p60",
   "template": "{{ 'abcd' | slice(2) | map('join') | join('|') }}",
   "data": {}
+ },
+ {
+  "name": "bigint tuple repr",
+  "template": "{{ (9223372036854775808, 1) }}",
+  "data": {}
+ },
+ {
+  "name": "bigint dict repr",
+  "template": "{{ {'k': 9223372036854775808} }}",
+  "data": {}
+ },
+ {
+  "name": "bigint list repr",
+  "template": "{{ [9223372036854775808, 'a'] }}",
+  "data": {}
+ },
+ {
+  "name": "tab in list repr",
+  "template": "{{ ['a\\tb'] }}",
+  "data": {}
+ },
+ {
+  "name": "tab list filter",
+  "template": "{{ 'a\\tb' | list }}",
+  "data": {}
+ },
+ {
+  "name": "quote repr both",
+  "template": "{{ ['a\"b', \"a'b\"] }}",
+  "data": {}
+ },
+ {
+  "name": "backslash repr",
+  "template": "{{ ['a\\\\b'] }}",
+  "data": {}
+ },
+ {
+  "name": "markup empty truthiness",
+  "template": "{{ missing | safe and () }}",
+  "data": {}
+ },
+ {
+  "name": "markup empty or",
+  "template": "{{ (missing | safe) or 'Y' }}",
+  "data": {}
+ },
+ {
+  "name": "wordcount float",
+  "template": "{{ 1.5 | wordcount }}",
+  "data": {}
+ },
+ {
+  "name": "wordcount unicode#2",
+  "template": "{{ 'h\u00e9llo w\u00f6rld' | wordcount }}",
+  "data": {}
+ },
+ {
+  "name": "wordcount punct",
+  "template": "{{ 'a.5 b' | wordcount }}",
+  "data": {}
+ },
+ {
+  "name": "pct str list",
+  "template": "{{ '<x>' % [1, 2] }}",
+  "data": {}
+ },
+ {
+  "name": "pct str dict",
+  "template": "{{ '<x>' % {'a': 1} }}",
+  "data": {}
+ },
+ {
+  "name": "pct str undefined",
+  "template": "{{ 'a.b' % missing }}",
+  "data": {}
+ },
+ {
+  "name": "pct empty int error",
+  "template": "{{ '' % 5 }}",
+  "data": {}
+ },
+ {
+  "name": "pct one of two error",
+  "template": "{{ '%s' % (1, 2) }}",
+  "data": {}
+ },
+ {
+  "name": "pct str tuple error",
+  "template": "{{ 'abc' % (1,) }}",
+  "data": {}
+ },
+ {
+  "name": "pct empty empty tuple",
+  "template": "{{ 'abc' % () }}",
+  "data": {}
+ },
+ {
+  "name": "bigint mul int",
+  "template": "{{ 9223372036854775808 * 2 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint mul big",
+  "template": "{{ 9223372036854775808 * 9223372036854775808 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint floordiv",
+  "template": "{{ 9223372036854775808 // 2 }} {{ 9223372036854775808 // 3 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint mod",
+  "template": "{{ 9223372036854775808 % 5 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint neg floordiv",
+  "template": "{{ -9223372036854775808 // 3 }} {{ -9223372036854775808 % 3 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint add",
+  "template": "{{ 9223372036854775808 + 1 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint sub",
+  "template": "{{ 9223372036854775808 - 1 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint float mul",
+  "template": "{{ 9223372036854775808 * 0.1 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint float cmp",
+  "template": "{{ 0.0 > 9223372036854775808 }} {{ 9223372036854775808 < 1.5 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint pow",
+  "template": "{{ 9223372036854775808 ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "bigint tests",
+  "template": "{{ 9223372036854775809 is odd }} {{ 9223372036854775808 is even }}",
+  "data": {}
+ },
+ {
+  "name": "int pow overflow error",
+  "template": "{{ 2.5 ** 4611686018427387904 }}",
+  "data": {}
+ },
+ {
+  "name": "tuple repeat",
+  "template": "{{ 0 * () }} {{ true * (1, 2) }}",
+  "data": {}
+ },
+ {
+  "name": "huge neg index",
+  "template": "{{ 'aBc'[-4611686018427387904] }} {[1, 2][-4611686018427387904]}",
+  "data": {}
+ },
+ {
+  "name": "slice lazy not",
+  "template": "{{ not ([1, 2] | slice(0)) }}",
+  "data": {}
+ },
+ {
+  "name": "bare test arg primary",
+  "template": "{{ 2 is eq 1 + 1 }} {{ 6 is divisibleby 3 * 1 }}",
+  "data": {}
+ },
+ {
+  "name": "chained is error",
+  "template": "{{ 1 is even is odd }}",
+  "data": {}
+ },
+ {
+  "name": "test then cond error",
+  "template": "{{ 1 is odd if 1 else 2 }}",
+  "data": {}
+ },
+ {
+  "name": "truncate int value error",
+  "template": "{{ 7 | truncate(3) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate tiny length error",
+  "template": "{{ 'abcdefghij' | truncate(1e-05) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate str length error",
+  "template": "{{ 'abcdefghij' | truncate('x') }}",
+  "data": {}
+ },
+ {
+  "name": "truncate int end error",
+  "template": "{{ 'abcdefghij' | truncate(1000000, true, 7) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate float length error",
+  "template": "{{ 'abcdefghij' | truncate(3.5) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate short returns value",
+  "template": "{{ 'abc' | truncate(10) }}",
+  "data": {}
+ },
+ {
+  "name": "truncate bool length error",
+  "template": "{{ 'abcdefghij' | truncate(true) }}",
+  "data": {}
+ },
+ {
+  "name": "center float error",
+  "template": "{{ 'x' | center(5.0) }}",
+  "data": {}
+ },
+ {
+  "name": "center list error",
+  "template": "{{ 'x' | center([1]) }}",
+  "data": {}
+ },
+ {
+  "name": "center extra arg error",
+  "template": "{{ 'x' | center(5, 7) }}",
+  "data": {}
+ },
+ {
+  "name": "pow fold negative literal",
+  "template": "{{ -2 ** 2 }} {{ -2 ** p }}",
+  "data": {
+   "p": 2
+  }
+ },
+ {
+  "name": "pow fold filter exponent",
+  "template": "{{ -5 ** ({}) | count }}",
+  "data": {}
+ },
+ {
+  "name": "pct markup",
+  "template": "{{ ('<x>' | safe) % [1] }}",
+  "data": {}
+ },
+ {
+  "name": "replace str args",
+  "template": "{{ 'a-b-c' | replace('-', 0) }}",
+  "data": {}
+ },
+ {
+  "name": "replace str old error",
+  "template": "{{ 'a-b-c' | replace(0, '-') }}",
+  "data": {}
+ },
+ {
+  "name": "join nonstring separator",
+  "template": "{{ ['a', 'b'] | join(0) }}",
+  "data": {}
+ },
+ {
+  "name": "bigint filesizeformat",
+  "template": "{{ 9223372036854775808 | filesizeformat }}",
+  "data": {}
+ },
+ {
+  "name": "bigint huge round precision",
+  "template": "{{ 1 | round(9223372036854775808) }}",
+  "data": {}
+ },
+ {
+  "name": "bigint bool cmp",
+  "template": "{{ 9223372036854775808 > true }} {{ 9223372036854775808 == true }}",
+  "data": {}
+ },
+ {
+  "name": "bigint tojson",
+  "template": "{{ 9223372036854775808 | tojson }}",
+  "data": {}
+ },
+ {
+  "name": "repr newline escape",
+  "template": "{{ ['a\\nb', 'a\\rb', 'a\\x01b'] }}",
+  "data": {}
+ },
+ {
+  "name": "round bool",
+  "template": "{{ true | round }} {{ false | round }}",
+  "data": {}
+ },
+ {
+  "name": "center bool width",
+  "template": "{{ 'aBc' | center(true) }}",
+  "data": {}
+ },
+ {
+  "name": "replace none args",
+  "template": "{{ 7 | replace(None, 0.1) }}",
+  "data": {}
+ },
+ {
+  "name": "format invalid conversion",
+  "template": "{{ 'h%C3' | format }}",
+  "data": {}
+ },
+ {
+  "name": "list bigint error",
+  "template": "{{ 9223372036854775808 | list }}",
+  "data": {}
+ },
+ {
+  "name": "count bigint error",
+  "template": "{{ 9223372036854775808 | count }}",
+  "data": {}
+ },
+ {
+  "name": "float key large",
+  "template": "{{ {'a': 1}[1e+20] }}",
+  "data": {}
+ },
+ {
+  "name": "float floor division",
+  "template": "{{ true // 0.1 }} {{ 7 // 1e-05 }} {{ 2.5 // 1e-05 }} {{ -0.0 // 1.0 }}",
+  "data": {}
+ },
+ {
+  "name": "int preserves bigint",
+  "template": "{{ 9223372036854775808 | int }}",
+  "data": {}
+ },
+ {
+  "name": "truncate short hash unchanged",
+  "template": "{{ {'k': 10} | truncate(100.0) <= 'x' }}",
+  "data": {}
+ },
+ {
+  "name": "empty array big repeat",
+  "template": "{{ [] * 9223372036854775807 }}",
+  "data": {}
+ },
+ {
+  "name": "indent noninteger width",
+  "template": "{{ 'aBc' | indent('abc') }}",
+  "data": {}
+ },
+ {
+  "name": "bigint times empty array",
+  "template": "{{ 9223372036854775808 * [] }}",
+  "data": {}
+ },
+ {
+  "name": "bigint string result compare",
+  "template": "{{ 9223372036854775808 | replace(0.0, 0.1) < '  x  ' }}",
+  "data": {}
+ },
+ {
+  "name": "fuzz bigint concat power",
+  "template": "{{ (9223372036854775807 ~ v) ** v }}",
+  "data": {
+   "v": 5
+  }
+ },
+ {
+  "name": "fuzz conditional indent",
+  "template": "{{ (n[2] or (n is number == d|count) if s|indent('abc') else ('abc'|sum <= n|round({'k0':{'k0':0.0,'k1':9223372036854775807},'k1':7}))) }}",
+  "data": {
+   "n": 2.5,
+   "s": "aBc",
+   "d": {
+    "a": 1,
+    "b": "x"
+   }
+  }
+ },
+ {
+  "name": "fuzz bool power big exponent",
+  "template": "{{ (d is none ** 1) ** 9223372036854775808 }}",
+  "data": {
+   "d": {
+    "a": 1
+   }
+  }
+ },
+ {
+  "name": "indent dict width error",
+  "template": "{{ 'h\u00e9llo' | indent({'k0': none, 'k1': {}}) }}",
+  "data": {}
+ },
+ {
+  "name": "indent dict conditional error",
+  "template": "{% if ([{'k': 'a'}, 'b', 0.5] if s|indent({}) else 'x') %}A{% else %}B{% endif %}",
+  "data": {
+   "s": "aBc"
+  }
  }
 ]
