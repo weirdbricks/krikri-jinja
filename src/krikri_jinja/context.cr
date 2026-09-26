@@ -45,15 +45,17 @@ module KrikriJinja
     # The engine's shared Undefined instance carries no name; a lookup miss
     # hands out a copy tagged with the variable that was missing so error
     # messages can name it the way real Jinja2 does.
-    def undefined_named(name : String) : AnyValue
+    def undefined_named(name : String, hint : String? = nil) : AnyValue
       undefined = @undefined
-      AnyValue.new(
-        if undefined.strict?
-          StrictUndefined.new(name, undefined.chainable)
-        else
-          Undefined.new(name, undefined.chainable)
-        end
-      )
+      value = undefined.strict? ? StrictUndefined.new(name, undefined.chainable) : Undefined.new(name, undefined.chainable)
+      value.hint = hint
+      AnyValue.new(value)
+    end
+
+    # An undefined for an attribute or key *name* that *obj* lacks, with
+    # Jinja's own message ("'dict object' has no attribute 'x'").
+    def missing_attribute(obj : AnyValue, name : String) : AnyValue
+      undefined_named(name, "'#{KrikriJinja.type_label(obj)} object' has no attribute '#{name}'")
     end
 
     def []?(name : String) : AnyValue?

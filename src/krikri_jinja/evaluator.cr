@@ -1444,17 +1444,17 @@ module KrikriJinja
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
         undefined = obj.raw.as(Undefined)
-        return @ctx.undefined_named(undefined.name || expr.attr || "value") if undefined.chainable
+        return @ctx.undefined_named(undefined.name || expr.attr || "value", undefined.hint) if undefined.chainable
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
-      get_attr(obj, expr.attr) || AnyValue.new(@ctx.undefined)
+      get_attr(obj, expr.attr) || (expr.attr ? @ctx.missing_attribute(obj, expr.attr.not_nil!) : AnyValue.new(@ctx.undefined))
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
         undefined = obj.raw.as(Undefined)
-        return @ctx.undefined_named(undefined.name || "value") if undefined.chainable
+        return @ctx.undefined_named(undefined.name || "value", undefined.hint) if undefined.chainable
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
@@ -1466,7 +1466,7 @@ module KrikriJinja
                    alternate = KrikriJinja.dict_key_alt(key)
                    found = raw[alternate]? if alternate
                  end
-                 found
+                 found || @ctx.missing_attribute(obj, key.raw.as?(String) || stringify(key))
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
                  return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)

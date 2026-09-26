@@ -64,6 +64,10 @@ module KrikriJinja
     # `x | default(other.thing.y)` stays lazy when `x` is defined. Jinja2's
     # own default is not chainable and raises on the spot.
     property chainable : Bool
+    # Jinja's undefined hint: the whole error message when the value is
+    # undefined for a more specific reason than a missing name (a missing
+    # attribute or key).
+    property hint : String?
 
     def initialize(@name : String? = nil, @chainable : Bool = false)
     end
@@ -100,7 +104,7 @@ module KrikriJinja
   # The message real Jinja2/Ansible reports names the variable that was
   # missing; fall back to a generic word when the name is unknown.
   def self.undefined_message(value : Undefined) : String
-    "'#{value.name || "missing"}' is undefined"
+    value.hint || "'#{value.name || "missing"}' is undefined"
   end
 
   # Lazily-evaluated filter results (map/select/selectattr and friends);
