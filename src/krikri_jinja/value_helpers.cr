@@ -228,11 +228,12 @@ module KrikriJinja
       "#{v.trunc.to_i64}.0"
     else
       s = v.to_s
-      if (m = s.match(/^(\-?[0-9.]+)e([+-]?\d+)$/))
-        mant = m[1]
-        mant = mant.sub(/\.0$/, "") if mant.ends_with?(".0")
-        mant = mant.sub(/\.$/, "") if mant.ends_with?(".")
-        exp = m[2]
+      e_pos = s.index('e')
+      if e_pos && plain_float_mantissa?(s[0...e_pos]) && plain_float_exponent?(s[(e_pos + 1)..])
+        mant = s[0...e_pos]
+        mant = mant.chomp(".0") if mant.ends_with?(".0")
+        mant = mant.chomp('.') if mant.ends_with?('.')
+        exp = s[(e_pos + 1)..]
         sign = exp.starts_with?('-') ? '-' : '+'
         digits = exp.lstrip("+-").rjust(2, '0')
         "#{mant}e#{sign}#{digits}"
@@ -242,8 +243,39 @@ module KrikriJinja
     end
   end
 
+  private def self.plain_float_mantissa?(s : String) : Bool
+    return false if s.empty?
+    has_digit = false
+    s.each_char_with_index do |c, i|
+      if c == '-'
+        return false unless i == 0
+      elsif c == '.'
+      elsif c.ascii_number?
+        has_digit = true
+      else
+        return false
+      end
+    end
+    has_digit
+  end
+
+  private def self.plain_float_exponent?(s : String) : Bool
+    return false if s.empty?
+    body = (s.starts_with?('+') || s.starts_with?('-')) ? s[1..] : s
+    return false if body.empty?
+    body.each_char { |c| return false unless c.ascii_number? }
+    true
+  end
+
   def self.escape_html(s : String) : String
-    return s unless s.matches?(/[&<>"']/)
+    needs_escape = false
+    s.each_byte do |b|
+      if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
+        needs_escape = true
+        break
+      end
+    end
+    return s unless needs_escape
     String.build do |io|
       s.each_char do |char|
         case char
