@@ -1099,7 +1099,7 @@ module KrikriJinja
         if truthy?(eval(expr.test))
           eval(expr.truthy)
         else
-          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(@ctx.undefined)
+          expr.falsy ? eval(expr.falsy.not_nil!) : @ctx.undefined_any
         end
       when Nodes::FilterNode
         eval_filter(expr)
@@ -1489,7 +1489,7 @@ module KrikriJinja
         return @ctx.undefined_named(undefined.name || expr.attr || "value", undefined.hint) if undefined.chainable
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
-      get_attr(obj, expr.attr) || (expr.attr ? @ctx.missing_attribute(obj, expr.attr.not_nil!) : AnyValue.new(@ctx.undefined))
+      get_attr(obj, expr.attr) || (expr.attr ? @ctx.missing_attribute(obj, expr.attr.not_nil!) : @ctx.undefined_any)
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
@@ -1509,31 +1509,31 @@ module KrikriJinja
                  found || @ctx.missing_attribute(obj, key.raw.as?(String) || stringify(key))
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
                when String
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? AnyValue.new(raw[pos.to_i32].to_s) : nil
                when TupleValue
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.items.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.items.size.to_i64
                  pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
                  (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                when Nil
-                 AnyValue.new(@ctx.undefined)
+                 @ctx.undefined_any
                else
-                 get_attr(obj, key.raw.as?(String) || stringify(key)) || AnyValue.new(@ctx.undefined)
+                 get_attr(obj, key.raw.as?(String) || stringify(key)) || @ctx.undefined_any
                end
-      result || AnyValue.new(@ctx.undefined)
+      result || @ctx.undefined_any
     end
 
     private def eval_slice(expr : Nodes::SliceNode) : AnyValue
