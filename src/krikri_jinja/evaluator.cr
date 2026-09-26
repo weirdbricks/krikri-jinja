@@ -1460,12 +1460,10 @@ module KrikriJinja
       key = eval(expr.key)
       result = case raw = obj.raw
                when Hash
-                 encoded = KrikriJinja.dict_key(key)
-                 found = raw[encoded]?
-                 unless found
-                   alternate = KrikriJinja.dict_key_alt(key)
-                   found = raw[alternate]? if alternate
-                 end
+                 # Shared lookup so the JSON-round-trip plain-string
+                 # fallback (value_helpers.cr) stays in sync with the
+                 # type-preserving encodings here.
+                 found = KrikriJinja.dict_lookup(raw, key)
                  found || @ctx.missing_attribute(obj, key.raw.as?(String) || stringify(key))
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil

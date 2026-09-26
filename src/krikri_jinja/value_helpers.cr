@@ -153,6 +153,45 @@ module KrikriJinja
     end
   end
 
+  # Plain string form of a numeric key, or nil for anything else. Hosts
+  # that hand the engine pre-built dicts through a JSON round trip lose
+  # their YAML key types (a JSON object's keys are always strings), so
+  # an integer YAML key (`7:`) arrives as the plain string "7" while the
+  # subscript still indexes with the real int - the type-preserving
+  # encodings above miss it and the lookup wrongly reports undefined
+  # (robertdebock.tomcat's `_tomcat_unarchive_urls[instance.version]`
+  # became the literal string "undefined" instead of a download URL).
+  # Real Jinja2 matches dict keys by value, so the plain form is tried
+  # as a last resort. Strings deliberately get no fallback here: the
+  # caller has already tried the string itself, and coercing a string
+  # key into a numeric encoding would fabricate matches real Jinja2
+  # does not make.
+  def self.dict_key_plain(v : AnyValue) : String?
+    case k = v.raw
+    when Int64 then k.to_s
+    when BigIntValue then k.value
+    when Float64
+      (k == k.trunc && k.abs <= 9223372036854775807.0) ? k.trunc.to_i64.to_s : nil
+    else nil
+    end
+  end
+
+  # One dict lookup for every call site: the type-preserving encoding,
+  # then the True/1 equivalence alternate, then the plain string form.
+  def self.dict_lookup(raw : Hash(String, AnyValue), key : AnyValue) : AnyValue?
+    encoded = dict_key(key)
+    found = raw[encoded]?
+    unless found
+      alternate = dict_key_alt(key)
+      found = raw[alternate]? if alternate
+    end
+    unless found
+      plain = dict_key_plain(key)
+      found = raw[plain]? if plain
+    end
+    found
+  end
+
   def self.decode_key(k : String) : AnyValue
     return AnyValue.new(k) unless k.starts_with?(KEY_MARKER)
     body = k[1..]
