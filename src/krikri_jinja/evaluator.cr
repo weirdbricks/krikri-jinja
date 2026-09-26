@@ -451,7 +451,7 @@ module KrikriJinja
     end
 
     private def evaluate_expression_value(source : String, variables) : AnyValue
-      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
       ctx.host_context = @host_context
       variables.each { |key, value| ctx[key] = KrikriJinja.wrap_value(value) }
       expression = parsed_expression(source)
@@ -473,7 +473,7 @@ module KrikriJinja
     def evaluate_parsed(expression : Nodes::ExprNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                         resolver : VariableResolver? = nil,
                         undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : AnyValue
-      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -489,7 +489,7 @@ module KrikriJinja
     def render_parsed(node : Nodes::TemplateNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                       resolver : VariableResolver? = nil,
                       undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : String
-      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -512,7 +512,7 @@ module KrikriJinja
     end
 
     private def render_variables(source : String, variables)
-      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
       ctx.host_context = @host_context
       ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = KrikriJinja.wrap_value(v) }
