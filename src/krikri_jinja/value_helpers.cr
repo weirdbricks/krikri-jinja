@@ -15,6 +15,7 @@ module KrikriJinja
     when Hash then !v.empty?
     when TupleValue then !v.items.empty?
     when Markup then !v.value.empty?
+    when HostObject then v.truthy?
     else true
     end
   end
@@ -97,6 +98,7 @@ module KrikriJinja
       raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
       "Undefined"
     when Markup then "Markup(#{py_repr_string(v.value)})"
+    when HostObject then v.repr
     else stringify(value)
     end
   end
@@ -206,6 +208,10 @@ module KrikriJinja
   def self.values_equal(a : AnyValue, b : AnyValue) : Bool
     x = a.raw
     y = b.raw
+    if x.is_a?(HostObject) || y.is_a?(HostObject)
+      order = x.is_a?(HostObject) ? x.compare(b) : y.as(HostObject).compare(a).try(&.-)
+      return order == 0
+    end
     if x.is_a?(Undefined) || y.is_a?(Undefined)
       if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
         offending = x.is_a?(Undefined) ? x.as(Undefined) : y.as(Undefined)
@@ -280,6 +286,11 @@ module KrikriJinja
   def self.compare_values(a : AnyValue, b : AnyValue) : Int32
     x = a.raw
     y = b.raw
+    if x.is_a?(HostObject) || y.is_a?(HostObject)
+      order = x.is_a?(HostObject) ? x.compare(b) : y.as(HostObject).compare(a).try(&.-)
+      return order if order
+      raise TemplateError.new("'<' not supported between these operand types", 0)
+    end
     if (x.is_a?(Undefined) && x.strict?) || (y.is_a?(Undefined) && y.strict?)
       offending = x.is_a?(Undefined) ? x.as(Undefined) : y.as(Undefined)
       raise TemplateError.new(KrikriJinja.undefined_message(offending), 0, kind: ErrorKind::Undefined)

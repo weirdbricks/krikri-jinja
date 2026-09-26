@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.12"
+  VERSION = "0.4.13"
 
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
@@ -210,6 +210,7 @@ module KrikriJinja
       raw.each { |key, item| object[key] = to_json_any(item) }
       JSON::Any.new(object)
     when BigIntValue then JSON::Any.new(raw.value)
+    when HostObject then raw.to_json_any
     when Nil, Bool, Int64, Float64, String then JSON::Any.new(raw)
     else
       raise TemplateError.new("value of type #{raw.class} is not JSON-compatible", 0, kind: ErrorKind::Conversion)
