@@ -13,16 +13,28 @@ require "./krikri_jinja/globals"
 module KrikriJinja
   VERSION = "0.4.15"
 
+  @@quote_table : Array(Bool)?
+
+  private def self.quote_table : Array(Bool)
+    @@quote_table ||= begin
+      t = Array(Bool).new(256, false)
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~".each_byte { |b| t[b] = true }
+      t
+    end
+  end
+
+  private HEX = "0123456789ABCDEF"
+
   # Percent-encoding matching urllib.parse.quote (space becomes %20).
   def self.percent_encode(s : String, extra_safe : String = "") : String
-    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~" + extra_safe
+    table = quote_table
+    extra = extra_safe.bytes
     String.build do |io|
       s.each_byte do |b|
-        c = b.chr
-        if safe.includes?(c)
-          io << c
+        if table.unsafe_fetch(b) || (!extra.empty? && extra.includes?(b))
+          io << b.chr
         else
-          io << "%" << b.to_s(16).upcase.rjust(2, '0')
+          io << '%' << HEX[b >> 4] << HEX[b & 15]
         end
       end
     end
