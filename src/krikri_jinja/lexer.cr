@@ -127,13 +127,61 @@ module KrikriJinja
     def initialize(source : String, @options : LexerOptions = LexerOptions.new)
       src : String = source
       # jinja normalizes \r\n and \r to \n when reading the source.
-      src = src.gsub("\r\n", "\n").gsub('\r', '\n')
+      if src.includes?('\r')
+        src = src.gsub("\r\n", "\n").gsub('\r', '\n')
+      end
       # keep_trailing_newline: by default one trailing newline is removed,
       # matching the documented environment default.
-      unless @options.keep_trailing_newline
-        src = src.sub(/\n\Z/, "")
+      if !@options.keep_trailing_newline && src.ends_with?('\n')
+        src = src.chomp
       end
       @source = src
+    end
+
+    # Byte-level comparison of `src` at byte offset `i` against `delim`.
+    private def self.bytes_match?(src : UInt8*, src_size : Int32, i : Int32, delim : UInt8*, delim_size : Int32) : Bool
+      return false if i + delim_size > src_size
+      j = 0
+      while j < delim_size
+        return false unless src[i + j] == delim[j]
+        j += 1
+      end
+      true
+    end
+
+    # Single forward byte scan for the earliest of the three tag openers.
+    # Returns the char index of the opener and which opener matched, or nil
+    # when none remains. Replaces three separate String#index scans plus an
+    # array allocation per tag.
+    def self.find_next_tag(src : String, pos : Int32, opts : LexerOptions) : {Int32, String}?
+      vb = opts.var_start
+      bb = opts.block_start
+      cb = opts.comment_start
+      return {pos, vb} if vb.empty?
+      return {pos, bb} if bb.empty?
+      return {pos, cb} if cb.empty?
+      vp = vb.to_unsafe
+      bp = bb.to_unsafe
+      cp = cb.to_unsafe
+      vsize = vb.bytesize
+      bsize = bb.bytesize
+      csize = cb.bytesize
+      p = src.to_unsafe
+      src_size = src.bytesize
+      i = src.char_index_to_byte_index(pos)
+      return nil unless i.is_a?(Int32)
+      while i < src_size
+        b = p[i]
+        if b == vp[0] && bytes_match?(p, src_size, i, vp, vsize)
+          return {src.byte_index_to_char_index(i).not_nil!, vb}
+        elsif b == bp[0] && bytes_match?(p, src_size, i, bp, bsize)
+          return {src.byte_index_to_char_index(i).not_nil!, bb}
+        elsif b == cp[0] && bytes_match?(p, src_size, i, cp, csize)
+          return {src.byte_index_to_char_index(i).not_nil!, cb}
+        end
+        i += 1
+      end
+      nil
     end
 
     # Finds the tag closer starting at `start`, skipping quoted strings and
@@ -142,38 +190,47 @@ module KrikriJinja
     # marker, and whether it closed with a `+` KEEP marker (Jinja2's
     # whitespace-control form that suppresses trim_blocks for that tag).
     def self.scan_tag_end(src : String, start : Int32, delim_end : String) : Tuple(Int32?, Bool, Bool)
+      p = src.to_unsafe
+      src_size = src.bytesize
+      d = delim_end.to_unsafe
+      dsize = delim_end.bytesize
+      d0 = dsize > 0 ? d[0] : 0u8
       depth = 0
-      i = start
-      balance = delim_end[0] == '}'
+      byte_start = src.char_index_to_byte_index(start)
+      return {nil, false, false} unless byte_start.is_a?(Int32)
+      i = byte_start
+      balance = d0 == '}'.ord
       right_strip = false
-      while i < src.size
-        c = src[i]
-        if c == '\'' || c == '"'
+      while i < src_size
+        c = p[i]
+        if c == '\''.ord || c == '"'.ord
           quote = c
           i += 1
-          while i < src.size && src[i] != quote
-            i += src[i] == '\\' ? 2 : 1
+          while i < src_size && p[i] != quote
+            i += p[i] == '\\'.ord ? 2 : 1
           end
           i += 1
-        elsif c == '{'
+        elsif c == '{'.ord
           depth += 1 if balance
           i += 1
-        elsif c == '}'
+        elsif c == '}'.ord
           if balance && depth > 0
             depth -= 1
             i += 1
           else
-            if src[i, delim_end.size] == delim_end
-              rs = i > start && src[i - 1] == '-'
-              rp = !rs && i > start && src[i - 1] == '+'
-              return {rs ? i - 1 : i, rs, rp}
+            if bytes_match?(p, src_size, i, d, dsize)
+              rs = i > byte_start && p[i - 1] == '-'.ord
+              rp = !rs && i > byte_start && p[i - 1] == '+'.ord
+              char_i = src.byte_index_to_char_index(i).not_nil!
+              return {rs ? char_i - 1 : char_i, rs, rp}
             end
             i += 1
           end
-        elsif src[i, delim_end.size] == delim_end
-          rs = i > start && src[i - 1] == '-'
-          rp = !rs && i > start && src[i - 1] == '+'
-          return {rs ? i - 1 : i, rs, rp}
+        elsif bytes_match?(p, src_size, i, d, dsize)
+          rs = i > byte_start && p[i - 1] == '-'.ord
+          rp = !rs && i > byte_start && p[i - 1] == '+'.ord
+          char_i = src.byte_index_to_char_index(i).not_nil!
+          return {rs ? char_i - 1 : char_i, rs, rp}
         else
           i += 1
         end
@@ -200,17 +257,13 @@ module KrikriJinja
       prev_text_end : Int32? = nil
 
       while pos < src.size
-        var_idx = src.index(opts.var_start, pos)
-        block_idx = src.index(opts.block_start, pos)
-        comment_idx = src.index(opts.comment_start, pos)
-        candidates = [var_idx, block_idx, comment_idx].compact
-        next_delim = candidates.min?
-
-        if next_delim.nil?
+        found = Lexer.find_next_tag(src, pos, opts)
+        if found.nil?
           text = src[pos..]
           out_tokens << Token.new(TokenType::Text, text, line) unless text.empty?
           break
         end
+        next_delim, opening = found
 
         if next_delim > pos
           text = src[pos...next_delim]
@@ -219,7 +272,6 @@ module KrikriJinja
           line += text.count('\n')
         end
 
-        opening = src[next_delim, 2]
         delim_end = case opening
                     when opts.var_start then opts.var_end
                     when opts.block_start then opts.block_end
@@ -439,35 +491,35 @@ module KrikriJinja
     end
 
     private def read_operator(src, i, toks, line) : Int32
-      three = src[i, 3]
-      two = src[i, 2]
-      case
-      when three == "//="
+      a = src[i]
+      b = src[i + 1]?
+      c = src[i + 2]?
+      if a == '/' && b == '/' && c == '='
         toks << Token.new(TokenType::Op, "//=", line); i + 3
-      when three == "**="
+      elsif a == '*' && b == '*' && c == '='
         toks << Token.new(TokenType::Op, "**=", line); i + 3
-      when two == "//"
+      elsif a == '/' && b == '/'
         toks << Token.new(TokenType::Op, "//", line); i + 2
-      when two == "**"
+      elsif a == '*' && b == '*'
         toks << Token.new(TokenType::Op, "**", line); i + 2
-      when two == "=="
+      elsif a == '=' && b == '='
         toks << Token.new(TokenType::Op, "==", line); i + 2
-      when two == "!="
+      elsif a == '!' && b == '='
         toks << Token.new(TokenType::Op, "!=", line); i + 2
-      when two == ">="
+      elsif a == '>' && b == '='
         toks << Token.new(TokenType::Op, ">=", line); i + 2
-      when two == "<="
+      elsif a == '<' && b == '='
         toks << Token.new(TokenType::Op, "<=", line); i + 2
-      when two == "+="
+      elsif a == '+' && b == '='
         toks << Token.new(TokenType::Op, "+=", line); i + 2
-      when two == "-="
+      elsif a == '-' && b == '='
         toks << Token.new(TokenType::Op, "-=", line); i + 2
-      when two == "*="
+      elsif a == '*' && b == '='
         toks << Token.new(TokenType::Op, "*=", line); i + 2
-      when two == "/="
+      elsif a == '/' && b == '='
         toks << Token.new(TokenType::Op, "/=", line); i + 2
       else
-        toks << Token.new(TokenType::Op, src[i].to_s, line)
+        toks << Token.new(TokenType::Op, a.to_s, line)
         i + 1
       end
     end

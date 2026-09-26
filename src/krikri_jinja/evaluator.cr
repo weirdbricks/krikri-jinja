@@ -330,6 +330,11 @@ module KrikriJinja
     # value) pairs instead of failing to unpack its keys, a lenient form
     # some Ansible roles depend on.
     property dict_pair_unpacking : Bool = false
+
+    @@cache_limit = 4096
+    @template_cache : Hash(String, Nodes::TemplateNode)
+    @expression_cache : Hash(String, Nodes::ExprNode)
+    @options_key : String
     getter filters : Hash(String, FilterFn)
     getter tests : Hash(String, TestFn)
 
@@ -341,6 +346,9 @@ module KrikriJinja
       @globals = globals
       @filters = BUILTIN_FILTERS.dup
       @tests = BUILTIN_TESTS.dup
+      @template_cache = {} of String => Nodes::TemplateNode
+      @expression_cache = {} of String => Nodes::ExprNode
+      @options_key = build_options_key
     end
 
     def with_undefined(undefined : Undefined) : Engine
@@ -443,10 +451,10 @@ module KrikriJinja
     end
 
     private def evaluate_expression_value(source : String, variables) : AnyValue
-      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
       ctx.host_context = @host_context
       variables.each { |key, value| ctx[key] = KrikriJinja.wrap_value(value) }
-      expression = Parser.parse_expression(source, @options)
+      expression = parsed_expression(source)
       Evaluator.new(ctx, self).eval(expression)
     rescue error : TemplateError
       raise error
@@ -465,7 +473,7 @@ module KrikriJinja
     def evaluate_parsed(expression : Nodes::ExprNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                         resolver : VariableResolver? = nil,
                         undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : AnyValue
-      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -481,7 +489,7 @@ module KrikriJinja
     def render_parsed(node : Nodes::TemplateNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                       resolver : VariableResolver? = nil,
                       undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : String
-      ctx = Context.new(@globals.dup, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -504,16 +512,50 @@ module KrikriJinja
     end
 
     private def render_variables(source : String, variables)
-      ctx = Context.new(@globals.dup, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
       ctx.host_context = @host_context
       ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = KrikriJinja.wrap_value(v) }
-      node = Parser.parse(source, @options)
+      node = parsed_template(source)
       Evaluator.new(ctx, self).render_template(node)
     end
 
     def load(name : String) : Nodes::TemplateNode
-      Parser.parse(load_source(name), @options)
+      parsed_template(load_source(name))
+    end
+
+    # Returns the parsed template for `source`, reusing the parse tree
+    # across calls. Parsed nodes are shared, so evaluators must never
+    # mutate them (see the **kwargs fix in `eval_call`).
+    def parsed_template(source : String) : Nodes::TemplateNode
+      key = "t\x1f#{@options_key}\x1f#{source}"
+      cached = @template_cache[key]?
+      return cached if cached
+      node = Parser.parse(source, @options)
+      if @template_cache.size >= @@cache_limit
+        @template_cache.clear
+      end
+      @template_cache[key] = node
+      node
+    end
+
+    def parsed_expression(source : String) : Nodes::ExprNode
+      key = "e\x1f#{@options_key}\x1f#{source}"
+      cached = @expression_cache[key]?
+      return cached if cached
+      node = Parser.parse_expression(source, @options)
+      if @expression_cache.size >= @@cache_limit
+        @expression_cache.clear
+      end
+      @expression_cache[key] = node
+      node
+    end
+
+    private def build_options_key : String
+      o = @options
+      [o.block_start, o.block_end, o.var_start, o.var_end, o.comment_start,
+       o.comment_end, o.trim_blocks, o.lstrip_blocks, o.keep_trailing_newline,
+       o.verbatim_expression_strings].join("\x1e")
     end
   end
 
@@ -936,7 +978,7 @@ module KrikriJinja
         return if node.ignore_missing
         raise TemplateError.new("template #{name.inspect} not found", node.line, kind: ErrorKind::Loader, template_name: name)
       end
-      sub_node = Parser.parse(source, @engine.options)
+      sub_node = @engine.parsed_template(source)
       if node.with_context
         # Rendered with the surrounding context minus loop locals; sets and
         # macro definitions stay private to the included template.
@@ -981,7 +1023,7 @@ module KrikriJinja
           scope.each { |k, v| sub_ctx.scopes[0][k] = v unless sub_ctx.scopes[0].has_key?(k) }
         end
       end
-      sub_node = Parser.parse(source, @engine.options)
+      sub_node = @engine.parsed_template(source)
       collect_module_exports(sub_node.body, sub_ctx)
       mod = sub_ctx.scopes[0].dup
       if node.from_import
@@ -1057,7 +1099,7 @@ module KrikriJinja
         if truthy?(eval(expr.test))
           eval(expr.truthy)
         else
-          expr.falsy ? eval(expr.falsy.not_nil!) : AnyValue.new(@ctx.undefined)
+          expr.falsy ? eval(expr.falsy.not_nil!) : @ctx.undefined_any
         end
       when Nodes::FilterNode
         eval_filter(expr)
@@ -1447,7 +1489,7 @@ module KrikriJinja
         return @ctx.undefined_named(undefined.name || expr.attr || "value", undefined.hint) if undefined.chainable
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
-      get_attr(obj, expr.attr) || (expr.attr ? @ctx.missing_attribute(obj, expr.attr.not_nil!) : AnyValue.new(@ctx.undefined))
+      get_attr(obj, expr.attr) || (expr.attr ? @ctx.missing_attribute(obj, expr.attr.not_nil!) : @ctx.undefined_any)
     end
 
     private def eval_getitem(expr : Nodes::GetitemNode) : AnyValue
@@ -1467,31 +1509,31 @@ module KrikriJinja
                  found || @ctx.missing_attribute(obj, key.raw.as?(String) || stringify(key))
                when Array
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
                when String
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.size.to_i64
                  pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
                  (0 <= pos < raw.size) ? AnyValue.new(raw[pos.to_i32].to_s) : nil
                when TupleValue
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
-                 return AnyValue.new(@ctx.undefined) unless k.is_a?(Int64)
+                 return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return AnyValue.new(@ctx.undefined) if idx < -raw.items.size.to_i64
+                 return @ctx.undefined_any if idx < -raw.items.size.to_i64
                  pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
                  (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                when Nil
-                 AnyValue.new(@ctx.undefined)
+                 @ctx.undefined_any
                else
-                 get_attr(obj, key.raw.as?(String) || stringify(key)) || AnyValue.new(@ctx.undefined)
+                 get_attr(obj, key.raw.as?(String) || stringify(key)) || @ctx.undefined_any
                end
-      result || AnyValue.new(@ctx.undefined)
+      result || @ctx.undefined_any
     end
 
     private def eval_slice(expr : Nodes::SliceNode) : AnyValue
@@ -1547,6 +1589,7 @@ module KrikriJinja
     private def eval_call(expr : Nodes::CallExprNode) : AnyValue
       func = eval(expr.func)
       args = [] of AnyValue
+      kw_exprs = expr.kwargs.dup
       expr.args.each do |a|
         if a.is_a?(Nodes::UnaryOpNode) && a.op == "*"
           item = eval(a.operand)
@@ -1554,13 +1597,13 @@ module KrikriJinja
         elsif a.is_a?(Nodes::UnaryOpNode) && a.op == "**"
           item = eval(a.operand)
           if item.raw.is_a?(Hash)
-            item.raw.as(Hash).each { |k, v| expr.kwargs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
+            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
           end
         else
           args << eval(a)
         end
       end
-      kwargs = eval_kwargs(expr.kwargs)
+      kwargs = eval_kwargs(kw_exprs)
       case raw = func.raw
       when Callable
         raw.call(args, kwargs, @ctx)
