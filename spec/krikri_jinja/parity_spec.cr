@@ -11,6 +11,12 @@ private def render_env(source : String, vars = {} of String => String,
   engine.render_string(source, KrikriJinja.context(vars))
 end
 
+# Keyed like a dict that arrived through a JSON round trip: the YAML
+# integer keys `7:`/`10:` reached the engine as plain strings.
+private def json_style_d
+  KrikriJinja::AnyValue.new({"7" => KrikriJinja::AnyValue.new("seven"), "10" => KrikriJinja::AnyValue.new("ten")} of String => KrikriJinja::AnyValue)
+end
+
 
 # Behaviors verified against real Jinja2 via the compare/ differential
 # harness; expected outputs here are the observed Jinja2 results.
@@ -67,6 +73,33 @@ describe KrikriJinja do
 
     it "renders Undefined as 'Undefined' inside containers" do
       KrikriJinja.render("{{ missing }}|{{ [missing] }}|{{ {'k': missing} }}").should eq("|[Undefined]|{'k': Undefined}")
+    end
+  end
+
+  describe "parity: dict key lookup" do
+    it "finds an integer-keyed entry by an integer index" do
+      KrikriJinja.render("{{ d[10] }}|{{ d[v] }}|{{ d[v | default(10)] }}",
+        {"d" => json_style_d, "v" => KrikriJinja::AnyValue.new(10i64)}).should eq("ten|ten|ten")
+    end
+
+    it "finds it through dict.get too" do
+      KrikriJinja.render("{{ d.get(10) }}|{{ d.get('7') }}",
+        {"d" => json_style_d}).should eq("ten|seven")
+    end
+
+    it "keeps string-keyed lookups working unchanged" do
+      KrikriJinja.render("{{ d['10'] }}|{{ d['nope'] is defined }}",
+        {"d" => json_style_d}).should eq("ten|False")
+    end
+
+    it "does not coerce a non-numeric string key into an integer match" do
+      KrikriJinja.render("{{ d[10] is defined }}",
+        {"d" => KrikriJinja::AnyValue.new({"a" => KrikriJinja::AnyValue.new("b")} of String => KrikriJinja::AnyValue)}).should eq("False")
+    end
+
+    it "still matches engine-internal integer keys exactly" do
+      KrikriJinja.render("{{ {7: 'seven', 10: 'ten'}[10] }}|{{ {7: 'seven', 10: 'ten'}[v] }}",
+        {"v" => KrikriJinja::AnyValue.new(7i64)}).should eq("ten|seven")
     end
   end
 

@@ -1336,12 +1336,7 @@ module KrikriJinja
       when "get"
         AnyValue.new(KrikriJinja::SimpleCallable.new("get") do |args, _k, _c|
           key = args[0]
-          enc = KrikriJinja.dict_key(key)
-          found = raw[enc]?
-          unless found
-            alt = KrikriJinja.dict_key_alt(key)
-            found = raw[alt]? if alt
-          end
+          found = KrikriJinja.dict_lookup(raw, key)
           found || args[1]? || AnyValue.new(nil)
         end)
       else raw[name]?
