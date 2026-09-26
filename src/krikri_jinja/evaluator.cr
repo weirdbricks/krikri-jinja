@@ -1547,6 +1547,7 @@ module KrikriJinja
     private def eval_call(expr : Nodes::CallExprNode) : AnyValue
       func = eval(expr.func)
       args = [] of AnyValue
+      kw_exprs = expr.kwargs.dup
       expr.args.each do |a|
         if a.is_a?(Nodes::UnaryOpNode) && a.op == "*"
           item = eval(a.operand)
@@ -1554,13 +1555,13 @@ module KrikriJinja
         elsif a.is_a?(Nodes::UnaryOpNode) && a.op == "**"
           item = eval(a.operand)
           if item.raw.is_a?(Hash)
-            item.raw.as(Hash).each { |k, v| expr.kwargs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
+            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
           end
         else
           args << eval(a)
         end
       end
-      kwargs = eval_kwargs(expr.kwargs)
+      kwargs = eval_kwargs(kw_exprs)
       case raw = func.raw
       when Callable
         raw.call(args, kwargs, @ctx)
