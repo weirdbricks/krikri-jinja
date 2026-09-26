@@ -1296,6 +1296,7 @@ module KrikriJinja
   def self.get_attr(obj : AnyValue, name : String?) : AnyValue?
     return nil unless name
     case raw = obj.raw
+    when HostObject then raw.get_attr(name)
     when Hash
       case name
       when "keys"
@@ -1544,6 +1545,7 @@ module KrikriJinja
     when String then json_string(io, v)
     when Markup
       json_string(io, v.value)
+    when HostObject then json_write(io, KrikriJinja.from_json_any(v.to_json_any).raw, indent, depth)
     when TupleValue
       io << "["
       v.items.each_with_index do |item, i|

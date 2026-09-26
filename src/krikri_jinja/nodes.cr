@@ -174,7 +174,48 @@ module KrikriJinja
 
   # Anything a filter/test/global function may return.
   alias AnyV = Nil | Bool | Int64 | Float64 | String | BigIntValue | Array(AnyValue) |
-               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue | GeneratorValue
+               Hash(String, AnyValue) | Callable | Markup | LoopObject | LoopCallable | Undefined | TupleValue | GeneratorValue |
+               HostObject
+
+  # A host-defined value type (a date, a duration, ...) taking part in
+  # templates through Python-style hooks. Every hook has a default that
+  # means "not supported", so a host implements only what its type does.
+  abstract class HostObject
+    # Python's str(): what `{{ value }}` renders.
+    abstract def to_s(io : IO) : Nil
+
+    # Python's repr(), used inside list/dict output. Defaults to str().
+    def repr : String
+      to_s
+    end
+
+    # Attribute or method lookup (`value.days`, `value.strftime(...)`);
+    # nil when the object has no such attribute.
+    def get_attr(name : String) : AnyValue?
+      nil
+    end
+
+    # A binary arithmetic operator with *other*. *reflected* is true when
+    # this object is the right-hand operand (Python's __radd__ and
+    # friends). Nil means unsupported for that operand.
+    def binary_op(op : String, other : AnyValue, reflected : Bool) : AnyValue?
+      nil
+    end
+
+    # Ordering against *other* (-1, 0, 1), or nil when incomparable.
+    def compare(other : AnyValue) : Int32?
+      nil
+    end
+
+    def truthy? : Bool
+      true
+    end
+
+    # How the value crosses into JSON (tojson, host conversions).
+    def to_json_any : JSON::Any
+      JSON::Any.new(to_s)
+    end
+  end
 
   # Marker for callable values (macros and host-provided functions).
   abstract class Callable

@@ -1087,8 +1087,16 @@ module KrikriJinja
         return left if truthy?(left)
         eval(expr.right)
       else
-        left = eval(expr.left).raw
-        right = eval(expr.right).raw
+        left_value = eval(expr.left)
+        right_value = eval(expr.right)
+        left = left_value.raw
+        right = right_value.raw
+        if left.is_a?(HostObject) || right.is_a?(HostObject)
+          result = left.as?(HostObject).try(&.binary_op(expr.op, right_value, false)) ||
+                   right.as?(HostObject).try(&.binary_op(expr.op, left_value, true))
+          return result if result
+          raise TemplateError.new("unsupported operand types for #{expr.op}", expr.line)
+        end
         # python bools are ints in arithmetic
         left = as_int(left) if left.is_a?(Bool)
         right = as_int(right) if right.is_a?(Bool)

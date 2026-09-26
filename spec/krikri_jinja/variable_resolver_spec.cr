@@ -102,3 +102,48 @@ describe "KrikriJinja dict pair unpacking" do
     engine.render_parsed(KrikriJinja::Parser.parse("{% for k in d %}{{ k }}{% endfor %}", engine.options), variables).should eq("ab")
   end
 end
+
+private class Meters < KrikriJinja::HostObject
+  getter value : Int64
+
+  def initialize(@value : Int64)
+  end
+
+  def to_s(io : IO) : Nil
+    io << @value << "m"
+  end
+
+  def repr : String
+    "Meters(#{@value})"
+  end
+
+  def get_attr(name : String) : KrikriJinja::AnyValue?
+    KrikriJinja::AnyValue.new(@value) if name == "value"
+  end
+
+  def binary_op(op : String, other : KrikriJinja::AnyValue, reflected : Bool) : KrikriJinja::AnyValue?
+    case {op, other.raw}
+    when {"+", Meters} then KrikriJinja::AnyValue.new(Meters.new(@value + other.raw.as(Meters).value))
+    when {"*", Int64}  then KrikriJinja::AnyValue.new(Meters.new(@value * other.raw.as(Int64)))
+    end
+  end
+
+  def compare(other : KrikriJinja::AnyValue) : Int32?
+    other.raw.as?(Meters).try { |meters| @value <=> meters.value }
+  end
+
+  def to_json_any : JSON::Any
+    JSON::Any.new(@value)
+  end
+end
+
+describe KrikriJinja::HostObject do
+  it "takes part in rendering, attributes, arithmetic, comparison, and JSON" do
+    variables = {"a" => KrikriJinja::AnyValue.new(Meters.new(2)), "b" => KrikriJinja::AnyValue.new(Meters.new(3))}
+    KrikriJinja.render("{{ a + b }} {{ 2 * a }} {{ [a] }} {{ a.value }} {{ a < b }} {{ a == a }} {{ [b, a] | sort | first }} {{ a | tojson }}",
+      variables).should eq("5m 4m [Meters(2)] 2 True True 2m 2")
+    expect_raises(KrikriJinja::TemplateError, "unsupported operand types for -") do
+      KrikriJinja.render("{{ a - 1 }}", variables)
+    end
+  end
+end
