@@ -283,6 +283,20 @@ describe KrikriJinja do
       render_env("a\n{# c #}\nb", trim_blocks: true).should eq("a\nb")
     end
 
+    # Both verified against real Jinja2 3.1.6: a `{%-` strips only the
+    # whitespace directly abutting it - if trim_blocks or a right-strip
+    # already consumed the whitespace between the previous tag and the
+    # `{%-`, the strip must not reach back into earlier content.
+    it "does not let {%- reach past whitespace another tag already consumed" do
+      render_env("{% if true %}\n{%- endif %}Z", trim_blocks: true).should eq("Z")
+      render_env("{% if true -%}a\n  {%- endif %}", trim_blocks: true).should eq("a")
+    end
+
+    it "keeps raw text adjacent to endraw out of a following {%- strip" do
+      render_env("a\n{%- raw %}X{% endraw -%}\nb", trim_blocks: true).should eq("aXb")
+      render_env("a\n{%- raw %}X{% endraw %}\n{%- if true %}Y{% endif %}").should eq("aXY")
+    end
+
     it "normalizes CRLF in source" do
       render_env("x\r\n", keep_trailing_newline: true).should eq("x\n")
     end

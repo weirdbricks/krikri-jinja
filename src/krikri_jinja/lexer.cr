@@ -187,6 +187,17 @@ module KrikriJinja
       src = @source
       pos = 0
       opts = @options
+      # Source offset just past the most recently emitted Text token, or nil
+      # when the last thing emitted was a tag/comment or whitespace was
+      # consumed by trim_blocks/right-strip. A `{%-` may only strip the text
+      # token that directly abuts the tag (real Jinja2's lexer matches the
+      # text and the tag in one regex, stripping "all whitespace between the
+      # text and the tag"); when a previous tag already ate the intervening
+      # whitespace, reaching back further would eat unrelated content - e.g.
+      # a `{%- endif %}` whose preceding newline was already eaten by
+      # trim_blocks after `{% endfor %}` would otherwise strip the loop
+      # body's own trailing newline, joining all iterations onto one line.
+      prev_text_end : Int32? = nil
 
       while pos < src.size
         var_idx = src.index(opts.var_start, pos)
@@ -204,6 +215,7 @@ module KrikriJinja
         if next_delim > pos
           text = src[pos...next_delim]
           out_tokens << Token.new(TokenType::Text, text, line)
+          prev_text_end = next_delim
           line += text.count('\n')
         end
 
@@ -285,15 +297,25 @@ module KrikriJinja
             if right_strip
               raw_text = raw_text.sub(/\A\s+/, "")
             end
-            if left_strip || (opts.lstrip_blocks && !plus_left)
+            if left_strip && prev_text_end == next_delim
               if text_count_before > 0 && out_tokens[text_count_before - 1].type == TokenType::Text
-                stripped_prev = left_strip ? out_tokens[text_count_before - 1].value.sub(/\s+\Z/, "") : out_tokens[text_count_before - 1].value.sub(/[ \t]+\Z/, "")
+                stripped_prev = out_tokens[text_count_before - 1].value.sub(/\s+\Z/, "")
                 out_tokens[text_count_before - 1] = Token.new(TokenType::Text, stripped_prev, out_tokens[text_count_before - 1].line)
-                out_tokens.delete_at(text_count_before - 1) if stripped_prev.empty? && opts.lstrip_blocks && !left_strip
+              end
+            elsif opts.lstrip_blocks && !plus_left
+              if text_count_before > 0 && out_tokens[text_count_before - 1].type == TokenType::Text
+                stripped_prev = out_tokens[text_count_before - 1].value.sub(/[ \t]+\Z/, "")
+                out_tokens[text_count_before - 1] = Token.new(TokenType::Text, stripped_prev, out_tokens[text_count_before - 1].line)
+                out_tokens.delete_at(text_count_before - 1) if stripped_prev.empty?
               end
             end
             raw_text = raw_text.sub(/\s+\Z/, "") if end_left_strip
-            out_tokens << Token.new(TokenType::Text, raw_text, line) unless raw_text.empty?
+            if raw_text.empty?
+              prev_text_end = nil
+            else
+              out_tokens << Token.new(TokenType::Text, raw_text, line)
+              prev_text_end = end_idx
+            end
             line += raw_text.count('\n')
             after = end_text_start
             if end_right_strip
@@ -347,8 +369,9 @@ module KrikriJinja
           end
         end
 
-        # whitespace control markers
-        if left_strip
+        # whitespace control markers. The `{%-` strip only applies when the
+        # preceding text token still abuts this tag (see prev_text_end).
+        if left_strip && prev_text_end == next_delim
           idx = out_tokens.rindex { |t| t.type == TokenType::Text }
           if idx
             stripped = out_tokens[idx].value.sub(/\s+\Z/, "")
@@ -364,6 +387,10 @@ module KrikriJinja
             line += ws.count('\n')
           end
         end
+
+        # A tag (or consumed whitespace after one) breaks the adjacency of
+        # whatever text token preceded it.
+        prev_text_end = nil
 
         pos = after
       end

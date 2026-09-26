@@ -44,6 +44,62 @@ describe KrikriJinja do
     end
   end
 
+  describe "whitespace control across block boundaries" do
+    for_vars = KrikriJinja.context({"plugins" => ["cpu", "interface", "load"]})
+    if_for_vars = KrikriJinja.context({"autoload" => true, "plugins" => ["cpu", "interface", "load"]})
+
+    it "keeps the for body's newline when {%- endif follows a trim_blocks-eaten newline" do
+      # Ansible's template module defaults to trim_blocks: true, and roles
+      # in the wild (robertdebock.collectd's collectd.conf.j2) pair a
+      # `{% for ... -%}` with a `{%- endif %}` whose preceding newline
+      # trim_blocks already ate. The `{%-` must not reach past that eaten
+      # newline into the loop body's own trailing newline - doing so joined
+      # every iteration onto one line (`LoadPlugin cpuLoadPlugin ...`),
+      # which collectd rejects as a config syntax error.
+      engine = KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new(trim_blocks: true))
+      engine.render_string(
+        "{% if autoload -%}\n{% for plugin in plugins -%}\nLoadPlugin {{ plugin }}\n{% endfor %}\n{%- endif %}",
+        if_for_vars
+      ).should eq("LoadPlugin cpu\nLoadPlugin interface\nLoadPlugin load\n")
+    end
+
+    it "keeps the for body's newline with text between {%- if and {% for" do
+      engine = KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new(trim_blocks: true))
+      engine.render_string(
+        "{% if autoload -%}\n# LoadPlugin section\n{% for plugin in plugins -%}\nLoadPlugin {{ plugin }}\n{% endfor %}\n{%- endif %}",
+        if_for_vars
+      ).should eq("# LoadPlugin section\nLoadPlugin cpu\nLoadPlugin interface\nLoadPlugin load\n")
+    end
+
+    it "keeps the same shape correct without trim_blocks" do
+      engine = KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new)
+      engine.render_string(
+        "{% if autoload -%}\n{% for plugin in plugins -%}\nLoadPlugin {{ plugin }}\n{% endfor %}\n{%- endif %}",
+        if_for_vars
+      ).should eq("LoadPlugin cpu\nLoadPlugin interface\nLoadPlugin load\n")
+    end
+
+    it "keeps the standalone for-loop's inter-iteration newline" do
+      tpl = "{% for plugin in plugins -%}\nLoadPlugin {{ plugin }}\n{% endfor %}"
+      KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new(trim_blocks: true))
+        .render_string(tpl, for_vars)
+        .should eq("LoadPlugin cpu\nLoadPlugin interface\nLoadPlugin load\n")
+      KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new)
+        .render_string(tpl, for_vars)
+        .should eq("LoadPlugin cpu\nLoadPlugin interface\nLoadPlugin load\n")
+    end
+
+    it "does not let {%- reach past whitespace another tag already consumed" do
+      engine = KrikriJinja::Engine.new(nil, options: KrikriJinja::LexerOptions.new(trim_blocks: true))
+      # trim_blocks eats the newline after {% if %}; the following {%- has
+      # nothing left to strip and must not reach back further.
+      engine.render_string("{% if true %}\n{%- endif %}Z").should eq("Z")
+      # right-strip consumed the newline; the following {%- must not touch
+      # content before it.
+      engine.render_string("{% if true -%}a\n  {%- endif %}").should eq("a")
+    end
+  end
+
   describe "loop extras" do
     it "supports cycle and changed" do
       KrikriJinja.render("{% for i in [1,2,3] %}{{ loop.cycle('a','b') }}{% endfor %}")
