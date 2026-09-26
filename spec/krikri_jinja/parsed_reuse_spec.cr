@@ -38,3 +38,26 @@ describe KrikriJinja::Engine do
     engine.render_parsed(node, KrikriJinja.context({"d" => {"a" => 5, "b" => 9}})).should eq("5/9")
   end
 end
+
+describe KrikriJinja::Engine do
+  it "reuses cached parsed templates and expressions for identical source" do
+    engine = KrikriJinja::Engine.new
+    a = engine.parsed_template("{{ 1 + 2 }}")
+    b = engine.parsed_template("{{ 1 + 2 }}")
+    a.should be(b)
+
+    x = engine.parsed_expression("1 + 2")
+    y = engine.parsed_expression("1 + 2")
+    x.should be(y)
+  end
+
+  it "keeps distinct cache entries for different sources and options" do
+    engine = KrikriJinja::Engine.new
+    a = engine.parsed_template("{{ 1 }}")
+    b = engine.parsed_template("{{ 2 }}")
+    a.should_not be(b)
+
+    other = KrikriJinja::Engine.new(options: KrikriJinja::LexerOptions.new(trim_blocks: true))
+    other.parsed_template("{{ 1 }}").should_not be(a)
+  end
+end

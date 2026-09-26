@@ -134,14 +134,27 @@ module KrikriJinja
   end
 
   class FileSystemLoader < Loader
+    @cache : Hash(String, {Time, String})
+
     def initialize(@root : String)
       @root_path = File.expand_path(@root)
+      @cache = {} of String => {Time, String}
     end
 
+    # Caches file contents keyed by name, invalidated by mtime, so
+    # repeated includes/imports of the same template do not re-read disk.
     def get_source(name : String) : String?
       path = File.expand_path(name, @root_path)
       return nil unless path == @root_path || path.starts_with?(@root_path + File::SEPARATOR)
-      File.read(path) if File.file?(path)
+      info = File.info?(path)
+      return nil unless info
+      mtime = info.modification_time
+      if (cached = @cache[name]?) && cached[0] == mtime
+        return cached[1]
+      end
+      content = File.read(path)
+      @cache[name] = {mtime, content}
+      content
     end
   end
 end
