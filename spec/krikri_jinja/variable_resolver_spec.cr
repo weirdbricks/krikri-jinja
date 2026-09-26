@@ -147,3 +147,17 @@ describe KrikriJinja::HostObject do
     end
   end
 end
+
+describe "KrikriJinja missing attribute messages" do
+  it "names the object type and attribute, as Jinja does" do
+    engine = KrikriJinja::Engine.new(undefined: KrikriJinja.ansible_strict_undefined)
+    variables = {"d" => KrikriJinja.wrap_value({"a" => 1})}
+    {"{{ d.nope }}", "{{ d['nope'] }}", "{{ d.nope.deeper }}"}.each do |source|
+      expect_raises(KrikriJinja::TemplateError, "'dict object' has no attribute 'nope'") do
+        engine.render_parsed(KrikriJinja::Parser.parse(source, engine.options), variables)
+      end
+    end
+    engine.render_parsed(KrikriJinja::Parser.parse("{{ d.nope | default('x') }}{{ d.nope is defined }}", engine.options), variables)
+      .should eq("xFalse")
+  end
+end

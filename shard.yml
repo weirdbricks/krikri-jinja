@@ -1,5 +1,5 @@
 name: krikri-jinja
-version: 0.4.13
+version: 0.4.14
 
 description: |
   Clean-room Jinja2 template engine in Crystal.

@@ -20,6 +20,21 @@ module KrikriJinja
     end
   end
 
+  # Python's type name for a value, as error messages report it.
+  def self.type_label(value : AnyValue) : String
+    case value.raw
+    when Nil                 then "NoneType"
+    when Bool                then "bool"
+    when Int64, BigIntValue  then "int"
+    when Float64             then "float"
+    when String, Markup      then "str"
+    when Array               then "list"
+    when Hash                then "dict"
+    when TupleValue          then "tuple"
+    else                          value.raw.class.name.split("::").last
+    end
+  end
+
   def self.undefined?(value : AnyValue) : Bool
     value.raw.is_a?(Undefined)
   end
