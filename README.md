@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.14)
+## Status (v0.4.15)
 
 Implemented:
 
@@ -183,6 +183,13 @@ includes, imports, and macros.
 
 Explicit `{%+ ... +%}` KEEP markers are supported: a tag closed with `+%}`
 does not eat the newline that follows it, even with `trim_blocks` enabled.
+
+A `{%-`/`-%}` marker strips only the whitespace that directly abuts its tag.
+When `trim_blocks` (or a preceding `-%}`) has already consumed the whitespace
+between a tag and a following `{%-`, the `{%-` has nothing left to strip and
+does not reach back into earlier content: a `{% for ... -%} ... {% endfor %}
+{%- endif %}` block keeps each iteration's own trailing newline even though
+`trim_blocks` ate the newline between `{% endfor %}` and `{%- endif %}`.
 
 `x in list` never raises for an undefined left operand; it reports False,
 matching Python and real Ansible.
