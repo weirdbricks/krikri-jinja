@@ -90,6 +90,29 @@ describe KrikriJinja do
       KrikriJinja.render("{% for i in [] %}{{ i }}{% else %}empty{% endfor %}").should eq("empty")
     end
 
+    it "accepts a trailing colon before compound statement bodies (jinja2 parity)" do
+      # Real Jinja2's parse_statements skips an optional colon for
+      # Python-syntax compatibility; ajsalminen.hosts' hosts.j2 relies on it.
+      KrikriJinja.render("{% for i in [1,2]: %}{{ i }}{% endfor %}").should eq("12")
+      KrikriJinja.render("{% if true: %}y{% endif %}").should eq("y")
+      KrikriJinja.render("{% if false %}y{% elif true: %}n{% endif %}").should eq("n")
+      KrikriJinja.render("{% if false %}y{% else: %}n{% endif %}").should eq("n")
+      KrikriJinja.render("{% for i in []: %}{{ i }}{% else: %}empty{% endfor %}").should eq("empty")
+      KrikriJinja.render("{% for i in [1,2] if i > 1: %}{{ i }}{% endfor %}").should eq("2")
+      KrikriJinja.render("{% filter upper: %}a{% endfilter %}").should eq("A")
+      KrikriJinja.render("{% macro m(x): %}{{ x }}{% endmacro %}{{ m(1) }}").should eq("1")
+      KrikriJinja.render("{% macro wrap() %}<{{ caller() }}>{% endmacro %}{% call wrap(): %}b{% endcall %}")
+        .should eq("<b>")
+      KrikriJinja.render("{% autoescape false: %}x{% endautoescape %}").should eq("x")
+    end
+
+    it "still rejects the colon where real Jinja2 rejects it" do
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render("{% with a = 3: %}{{ a }}{% endwith %}") }
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render("{% set x = 1: %}") }
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render("{% if true %}y{% endif: %}") }
+      expect_raises(KrikriJinja::TemplateError) { KrikriJinja.render("{% for i in [1] %}{{ i }}{% endfor: %}") }
+    end
+
     it "supports unpacking in for loops" do
       KrikriJinja.render("{% for k, v in items %}{{ k }}={{ v }};{% endfor %}",
         KrikriJinja.context({"items" => [[1, "a"], [2, "b"]]}))

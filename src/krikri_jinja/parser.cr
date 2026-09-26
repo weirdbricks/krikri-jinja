@@ -56,6 +56,8 @@ module KrikriJinja
           if end_tags && end_tags.includes?(tag_name)
             advance # block start
             advance # tag name
+            # `{% else: %}` - real Jinja2 skips the colon where a body follows
+            accept_python_compat_colon if tag_name == "else"
             expect_block_end unless tag_name == "elif"
             return body, tag_name, tok.line
           end
@@ -102,11 +104,13 @@ module KrikriJinja
     private def parse_if(line : Int32) : Nodes::IfNode
       branches = [] of Tuple(ExprNode, Array(Node))
       cond = parse_expression
+      accept_python_compat_colon
       expect_block_end
       body, tag, _ = parse_until(["elif", "else", "endif"])
       branches << {cond, body}
       while tag == "elif"
         cond = parse_expression
+        accept_python_compat_colon
         expect_block_end
         body, tag, _ = parse_until(["elif", "else", "endif"])
         branches << {cond, body}
@@ -127,6 +131,7 @@ module KrikriJinja
         test = parse_expression
       end
       recursive = !!accept_ident("recursive")
+      accept_python_compat_colon
       expect_block_end
       body, tag, _ = parse_until(["else", "endfor"])
       orelse = nil
@@ -225,6 +230,7 @@ module KrikriJinja
       # are not observable without includes-over-blocks and are ignored.
       accept_ident("scoped")
       required = !!accept_ident("required")
+      accept_python_compat_colon
       expect_block_end
       body, _tag, _ = parse_until(["endblock"])
       if required && body.any? { |n| !(n.is_a?(Nodes::TextNode) && n.text.strip.empty?) }
@@ -241,6 +247,7 @@ module KrikriJinja
       macro_name = name.value
       advance
       params = parse_param_list
+      accept_python_compat_colon
       expect_block_end
       body, _tag, _ = parse_until(["endmacro"])
       Nodes::MacroNode.new(macro_name, params, body, line)
@@ -299,6 +306,7 @@ module KrikriJinja
                        parse_arg_list
                      end
       body = nil
+      accept_python_compat_colon
       if accept_block_end
         inner, _tag, _ = parse_until(["endcall"])
         body = inner
@@ -315,6 +323,7 @@ module KrikriJinja
       while accept_op("|")
         filter = parse_filter_expr(filter)
       end
+      accept_python_compat_colon
       expect_block_end
       body, _tag, _ = parse_until(["endfilter"])
       Nodes::FilterBlockNode.new(filter, body, line)
@@ -419,6 +428,7 @@ module KrikriJinja
           advance
         end
       end
+      accept_python_compat_colon
       expect_block_end
       body, _tag, _ = parse_until(["endautoescape"])
       Nodes::AutoescapeNode.new(enabled, body, line)
@@ -1101,6 +1111,16 @@ module KrikriJinja
       else
         false
       end
+    end
+
+    # Real Jinja2's parse_statements skips an optional ":" between a compound
+    # statement's header and its body (Python-syntax compatibility), e.g.
+    # `{% for x in seq: %}`. It applies only to body-bearing tags: if/elif/else,
+    # for, block, macro, call, filter and autoescape - not to `with` (the colon
+    # collides with its assignment list), not to bodyless tags, and not to
+    # closing tags like `{% endif: %}`.
+    private def accept_python_compat_colon : Nil
+      accept_op(":")
     end
   end
 end

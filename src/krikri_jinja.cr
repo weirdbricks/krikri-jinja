@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.17"
+  VERSION = "0.4.18"
 
   @@quote_table : Array(Bool)?
 
