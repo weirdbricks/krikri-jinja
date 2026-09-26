@@ -19,6 +19,9 @@ module KrikriJinja
     property host_context : HostContext?
     # Lazy variable source consulted after every scope and before globals.
     property resolver : VariableResolver?
+    # Pre-boxed shared undefined for this context, reused on name misses.
+    getter undefined_any : AnyValue
+    @named_undefined_cache : Hash(String, AnyValue)
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
@@ -36,6 +39,8 @@ module KrikriJinja
       @loop_is_local = true
       @host_context = nil.as(HostContext?)
       @resolver = nil.as(VariableResolver?)
+      @undefined_any = AnyValue.new(@undefined)
+      @named_undefined_cache = {} of String => AnyValue
     end
 
     def [](name : String) : AnyValue
@@ -44,12 +49,25 @@ module KrikriJinja
 
     # The engine's shared Undefined instance carries no name; a lookup miss
     # hands out a copy tagged with the variable that was missing so error
-    # messages can name it the way real Jinja2 does.
+    # messages can name it the way real Jinja2 does. Hintless misses for the
+    # same name are memoized: repeated misses (optional vars, `defined`
+    # checks, `loop.parent`) would otherwise allocate on every lookup.
     def undefined_named(name : String, hint : String? = nil) : AnyValue
-      undefined = @undefined
-      value = undefined.strict? ? StrictUndefined.new(name, undefined.chainable) : Undefined.new(name, undefined.chainable)
-      value.hint = hint
-      AnyValue.new(value)
+      if hint.nil?
+        if (cached = @named_undefined_cache[name]?)
+          return cached
+        end
+        undefined = @undefined
+        value = undefined.strict? ? StrictUndefined.new(name, undefined.chainable) : Undefined.new(name, undefined.chainable)
+        boxed = AnyValue.new(value)
+        @named_undefined_cache[name] = boxed
+        boxed
+      else
+        undefined = @undefined
+        value = undefined.strict? ? StrictUndefined.new(name, undefined.chainable) : Undefined.new(name, undefined.chainable)
+        value.hint = hint
+        AnyValue.new(value)
+      end
     end
 
     # An undefined for an attribute or key *name* that *obj* lacks, with
@@ -134,14 +152,27 @@ module KrikriJinja
   end
 
   class FileSystemLoader < Loader
+    @cache : Hash(String, {Time, String})
+
     def initialize(@root : String)
       @root_path = File.expand_path(@root)
+      @cache = {} of String => {Time, String}
     end
 
+    # Caches file contents keyed by name, invalidated by mtime, so
+    # repeated includes/imports of the same template do not re-read disk.
     def get_source(name : String) : String?
       path = File.expand_path(name, @root_path)
       return nil unless path == @root_path || path.starts_with?(@root_path + File::SEPARATOR)
-      File.read(path) if File.file?(path)
+      info = File.info?(path)
+      return nil unless info
+      mtime = info.modification_time
+      if (cached = @cache[name]?) && cached[0] == mtime
+        return cached[1]
+      end
+      content = File.read(path)
+      @cache[name] = {mtime, content}
+      content
     end
   end
 end
