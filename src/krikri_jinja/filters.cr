@@ -498,6 +498,7 @@ module KrikriJinja
     attr = args[0]?.try(&.raw.as?(String)) || raise TemplateError.new("groupby requires an attribute", 0)
     case_sensitive = (kwargs["case_sensitive"]? || AnyValue.new(false)).raw == true
     groups = [] of Tuple(AnyValue, String, Array(AnyValue))
+    group_index = {} of String => Int32
     sorted_items = stable_sort(to_iterable(v)) do |a, b|
       compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(c.undefined),
                      get_attr(b, attr) || kwargs["default"]? || AnyValue.new(c.undefined))
@@ -505,9 +506,10 @@ module KrikriJinja
     sorted_items.each do |item|
       key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(c.undefined)
       gkey = !case_sensitive && key.raw.is_a?(String) ? key.raw.as(String).downcase : stringify(key)
-      if g = groups.find { |(_, ck, _)| ck == gkey }
-        g[2] << item
+      if (gi = group_index[gkey]?)
+        groups[gi][2] << item
       else
+        group_index[gkey] = groups.size
         groups << {key, gkey, [item]}
       end
     end
