@@ -63,6 +63,14 @@ module KrikriJinja
         when Callable   then "<callable>"
         when Markup     then v.value
         when LoopObject then "<loop>"
+        when GeneratorValue
+          # Real ansible-core 2.19 materializes a lazy filter generator
+          # (`list | unique`, `list | map(...)`) into a real list before
+          # it can be stringified - `{{ l | unique ~ 'x' }}` renders
+          # "['b', 'a']x" (live-verified), not a leaked generator repr.
+          # Plain Jinja2 leaks the generator repr here; Ansible is the
+          # parity target.
+          stringify(AnyValue.new(v.materialize), escape)
         else v.to_s
         end
     escape ? escape_html(s) : s
