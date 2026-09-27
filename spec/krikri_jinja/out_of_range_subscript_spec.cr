@@ -44,6 +44,25 @@ describe KrikriJinja do
       end
     end
 
+    it "raises on an integer subscript of a None base" do
+      ctx = KrikriJinja.context({"d" => nil})
+      expect_raises(KrikriJinja::TemplateError, "None has no element 1") do
+        KrikriJinja.render("{{ d[1] }}", ctx)
+      end
+    end
+
+    it "keeps a chained subscript off an out-of-range failure strict, preserving the original message" do
+      ctx = KrikriJinja.context({"items" => [1, 2]})
+      expect_raises(KrikriJinja::TemplateError, "list object has no element 9") do
+        KrikriJinja.render("{{ items[9][-1] }}", ctx)
+      end
+    end
+
+    it "keeps a string key on a None base lenient (dict-miss convention)" do
+      ctx = KrikriJinja.context({"d" => nil})
+      KrikriJinja.render("{{ d['k'] }}", ctx).should eq("")
+    end
+
     it "keeps a missing dict key lenient" do
       ctx = KrikriJinja.context({"d" => {"a" => 1}})
       KrikriJinja.render("{{ d['missing'] }}", ctx).should eq("")

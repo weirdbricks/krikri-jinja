@@ -1509,7 +1509,20 @@ module KrikriJinja
       obj = eval(expr.obj)
       if obj.raw.is_a?(Undefined)
         undefined = obj.raw.as(Undefined)
-        return @ctx.undefined_named(undefined.name || "value", undefined.hint) if undefined.chainable
+        if undefined.chainable
+          # A chain off a STRICT undefined stays strict (real Jinja2's
+          # chainable strict undefined preserves both strictness and the
+          # original failure message: `{{ [1,2][9][-1] }}` reports "list
+          # object has no element 9"). The old code rebuilt the chain
+          # link from the ENVIRONMENT's undefined, demoting an
+          # out-of-range subscript failure to the lenient sentinel.
+          if undefined.strict?
+            chained = StrictUndefined.new(undefined.name || "value", chainable: true)
+            chained.hint = undefined.hint
+            return AnyValue.new(chained)
+          end
+          return @ctx.undefined_named(undefined.name || "value", undefined.hint)
+        end
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
@@ -1565,7 +1578,21 @@ module KrikriJinja
                    (0 <= pos < raw.items.size) ? raw.items[pos] : nil
                  end
                when Nil
-                 @ctx.undefined_any
+                 # A JSON-null (Python None) base subscripted by an
+                 # INTEGER index is a real task failure in real Jinja2
+                 # ("None has no element 1", verified against 3.1.6 with
+                 # StrictUndefined) - a strict undefined, catchable by
+                 # `| default(...)` like the list/tuple out-of-range case
+                 # above. A STRING key stays the lenient undefined (the
+                 # codebase's long-standing lenient dict-key-miss
+                 # convention).
+                 if (nil_k = key.raw.as?(Int64) || as_int(key.raw))
+                   nil_oob = StrictUndefined.new(nil, chainable: true)
+                   nil_oob.hint = "None has no element #{nil_k}"
+                   AnyValue.new(nil_oob)
+                 else
+                   @ctx.undefined_any
+                 end
                else
                  get_attr(obj, key.raw.as?(String) || stringify(key)) || @ctx.undefined_any
                end
