@@ -1,1 +1,1 @@
-require "spec"
+require "minitest/autorun"

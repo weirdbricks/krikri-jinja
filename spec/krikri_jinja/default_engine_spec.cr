@@ -16,7 +16,7 @@ describe "KrikriJinja default engine" do
     KrikriJinja.register_default_global("answer", JSON::Any.new(42))
 
     rendered = KrikriJinja.render("{{ 'hello' | exclaim }} {{ 'hello' is text }} {{ identity([1, true]) | tojson }} {{ answer }}")
-    rendered.should eq("hello! True [1, true] 42")
+    assert_equal("hello! True [1, true] 42", rendered)
   ensure
     KrikriJinja.reset_default_engine
   end
@@ -26,9 +26,9 @@ describe "KrikriJinja default engine" do
     KrikriJinja.register_default_json_filter("shout") { |value, _args, _kwargs| JSON::Any.new(value.as_s.upcase) }
     KrikriJinja.register_default_json_test("small") { |value, _args, _kwargs| value.as_i < 10 }
 
-    KrikriJinja.default_known_filter?("shout").should be_true
-    KrikriJinja.default_known_test?("small").should be_true
-    KrikriJinja.default_known_filter?("missing_filter").should be_false
+    assert_equal(true, KrikriJinja.default_known_filter?("shout"))
+    assert_equal(true, KrikriJinja.default_known_test?("small"))
+    assert_equal(false, KrikriJinja.default_known_filter?("missing_filter"))
   ensure
     KrikriJinja.reset_default_engine
   end
@@ -37,20 +37,20 @@ end
 describe "KrikriJinja.evaluate_expression_result" do
   it "distinguishes an undefined result from a JSON null result" do
     undefined_result = KrikriJinja.evaluate_expression_result("missing")
-    undefined_result.undefined?.should be_true
-    undefined_result.value.should be_nil
+    assert_equal(true, undefined_result.undefined?)
+    assert_nil(undefined_result.value)
 
     null_result = KrikriJinja.evaluate_expression_result("none")
-    null_result.undefined?.should be_false
-    null_result.value.not_nil!.raw.should be_nil
+    assert_equal(false, null_result.undefined?)
+    assert_nil(null_result.value.not_nil!.raw)
   end
 
   it "returns typed values for defined expressions" do
     result = KrikriJinja.evaluate_expression_result("items | map(attribute='name')", {
       "items" => JSON.parse(%([{"name": "a"}, {"name": "b"}])),
     })
-    result.undefined?.should be_false
-    result.value.not_nil!.to_json.should eq(%(["a","b"]))
+    assert_equal(false, result.undefined?)
+    assert_equal(%(["a","b"]), result.value.not_nil!.to_json)
   end
 end
 
@@ -69,9 +69,9 @@ describe "KrikriJinja host context" do
       KrikriJinja.from_json_any(JSON::Any.new("#{host.not_nil!.as(SpecHostContext).prefix}#{KrikriJinja.stringify(args[0].not_nil!)}"))
     end
 
-    KrikriJinja.render("{{ greet('world') }}", host_context: SpecHostContext.new("hello ")).should eq("hello world")
-    KrikriJinja.evaluate_expression("greet('world')", host_context: SpecHostContext.new("hi "))
-      .not_nil!.as_s.should eq("hi world")
+    assert_equal("hello world", KrikriJinja.render("{{ greet('world') }}", host_context: SpecHostContext.new("hello ")))
+    assert_equal("hi world", KrikriJinja.evaluate_expression("greet('world')", host_context: SpecHostContext.new("hi "))
+      .not_nil!.as_s)
   ensure
     KrikriJinja.reset_default_engine
   end

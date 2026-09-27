@@ -12,3 +12,8 @@ authors:
 license: MIT
 
 crystal: ">= 1.10.0"
+
+development_dependencies:
+  minitest:
+    github: ysbaddaden/minitest.cr
+    version: ~> 1.6
