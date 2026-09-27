@@ -81,3 +81,17 @@ describe KrikriJinja do
     end
   end
 end
+
+describe KrikriJinja do
+  describe "generator stringification" do
+    it "materializes a lazy generator for `~` concatenation like real Ansible" do
+      KrikriJinja.render("{{ l | unique ~ 'x' }}", {"l" => ["b", "a", "b"]})
+        .should eq("['b', 'a']x")
+    end
+
+    it "materializes a lazy generator for a bare render like real Ansible" do
+      KrikriJinja.render("{{ l | unique }}", {"l" => ["b", "a", "b"]})
+        .should eq("['b', 'a']")
+    end
+  end
+end
