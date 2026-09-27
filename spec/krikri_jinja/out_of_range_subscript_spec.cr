@@ -63,6 +63,13 @@ describe KrikriJinja do
       KrikriJinja.render("{{ d['k'] }}", ctx).should eq("")
     end
 
+    it "raises on an out-of-range index into a lazy generator result" do
+      ctx = KrikriJinja.context({"items" => [1, 2]})
+      expect_raises(KrikriJinja::TemplateError, "list object has no element 2") do
+        KrikriJinja.render("{{ (items | unique)[2] }}", ctx)
+      end
+    end
+
     it "keeps a missing dict key lenient" do
       ctx = KrikriJinja.context({"d" => {"a" => 1}})
       KrikriJinja.render("{{ d['missing'] }}", ctx).should eq("")
