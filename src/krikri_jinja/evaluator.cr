@@ -1526,6 +1526,15 @@ module KrikriJinja
         raise TemplateError.new(KrikriJinja.undefined_message(undefined), expr.line, kind: ErrorKind::Undefined)
       end
       key = eval(expr.key)
+      # A lazy generator (`list | unique`) indexes like the list it
+      # materializes to: the old fall-through treated it as an
+      # unknown object and rendered the lenient undefined for ANY index,
+      # including an out-of-range one the hand-rolled side (and real
+      # Jinja2, whose generator subscript is a TypeError caught into a
+      # strict undefined) hard-fails.
+      if obj.raw.is_a?(GeneratorValue)
+        obj = AnyValue.new(obj.raw.as(GeneratorValue).materialize)
+      end
       result = case raw = obj.raw
                when Hash
                  # Shared lookup so the JSON-round-trip plain-string
