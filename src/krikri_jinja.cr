@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.18"
+  VERSION = "0.4.19"
 
   @@quote_table : Array(Bool)?
 
@@ -223,6 +223,7 @@ module KrikriJinja
       JSON::Any.new(object)
     when BigIntValue then JSON::Any.new(raw.value)
     when HostObject then raw.to_json_any
+    when Markup then JSON::Any.new(raw.value)
     when Nil, Bool, Int64, Float64, String then JSON::Any.new(raw)
     else
       raise TemplateError.new("value of type #{raw.class} is not JSON-compatible", 0, kind: ErrorKind::Conversion)
