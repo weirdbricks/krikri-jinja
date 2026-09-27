@@ -477,7 +477,20 @@ module KrikriJinja
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
-      Evaluator.new(ctx, self).eval(expression)
+      result = Evaluator.new(ctx, self).eval(expression)
+      # A STRICT undefined reaching the top of an expression evaluation is
+      # a real task failure (ansible-core's StrictUndefined raises on
+      # render, and so does plain Jinja2 for the subscript-created
+      # out-of-range undefined) - not a lenient "undefined" result. The
+      # lenient undefined convention is unaffected: krikri's default
+      # lenient environment only ever sees strict undefineds created for
+      # specific hard failures (an out-of-range list/tuple subscript),
+      # and a consuming `| default(...)` catches the value before it can
+      # become the top-level result.
+      if (raw = result.raw).is_a?(Undefined) && raw.strict?
+        raise TemplateError.new(KrikriJinja.undefined_message(raw), expression.line, kind: ErrorKind::Undefined)
+      end
+      result
     rescue error : TemplateError
       raise error
     rescue error
@@ -1511,9 +1524,25 @@ module KrikriJinja
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
                  return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return @ctx.undefined_any if idx < -raw.size.to_i64
-                 pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
-                 (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
+                 if idx < -raw.size.to_i64 || idx >= raw.size.to_i64
+                   # Real Jinja2 3.1.6 (verified): a failed list subscript
+                   # produces an Undefined whose message is "list object
+                   # has no element 9" - a STRICT undefined, so rendering
+                   # it raises (ansible-core's StrictUndefined fails the
+                   # task) while a consuming `| default(...)` still catches
+                   # it (real: `{{ [1,2,3][99] | default('x') }}` renders
+                   # 'x'). The old plain `nil` here flowed into the lenient
+                   # undefined convention instead, rendering the "undefined"
+                   # sentinel where real Ansible hard-fails (differential-
+                   # fuzz triage: the strict side is the real-Ansible-
+                   # matching one).
+                   oob = StrictUndefined.new(nil, chainable: true)
+                   oob.hint = "list object has no element #{idx}"
+                   AnyValue.new(oob)
+                 else
+                   pos = (idx < 0 ? raw.size.to_i64 + idx : idx)
+                   (0 <= pos < raw.size) ? raw[pos.to_i32] : nil
+                 end
                when String
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
                  return @ctx.undefined_any unless k.is_a?(Int64)
@@ -1525,9 +1554,16 @@ module KrikriJinja
                  k = key.raw.as?(Int64) || as_int(key.raw) || nil
                  return @ctx.undefined_any unless k.is_a?(Int64)
                  idx = k
-                 return @ctx.undefined_any if idx < -raw.items.size.to_i64
-                 pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
-                 (0 <= pos < raw.items.size) ? raw.items[pos] : nil
+                 if idx < -raw.items.size.to_i64 || idx >= raw.items.size.to_i64
+                   # Same strict out-of-range treatment as the Array branch
+                   # above (real message: "tuple object has no element N").
+                   oob = StrictUndefined.new(nil, chainable: true)
+                   oob.hint = "tuple object has no element #{idx}"
+                   AnyValue.new(oob)
+                 else
+                   pos = (idx < 0 ? raw.items.size.to_i64 + idx : idx)
+                   (0 <= pos < raw.items.size) ? raw.items[pos] : nil
+                 end
                when Nil
                  @ctx.undefined_any
                else
