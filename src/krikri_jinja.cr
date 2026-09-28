@@ -14,12 +14,15 @@ module KrikriJinja
   VERSION = "0.4.19"
 
   @@quote_table : Array(Bool)?
+  @@quote_table_mutex = Mutex.new
 
   private def self.quote_table : Array(Bool)
-    @@quote_table ||= begin
-      t = Array(Bool).new(256, false)
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~".each_byte { |b| t[b] = true }
-      t
+    @@quote_table_mutex.synchronize do
+      @@quote_table ||= begin
+        t = Array(Bool).new(256, false)
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~".each_byte { |b| t[b] = true }
+        t
+      end
     end
   end
 
@@ -272,9 +275,13 @@ module KrikriJinja
   # tests, functions, or globals can register them once here instead of
   # building and configuring a private engine at every call site.
   @@default_engine : Engine? = nil
+  # Guards the @@default_engine singleton itself (its lazy init and reset),
+  # separately from the Engine-internal RWLock that guards one instance's
+  # own filters/tests/globals/caches.
+  @@default_engine_mutex = Mutex.new
 
   def self.default_engine : Engine
-    @@default_engine ||= Engine.new
+    @@default_engine_mutex.synchronize { @@default_engine ||= Engine.new }
   end
 
   # Builds an engine that inherits the shared default engine's registered
@@ -284,17 +291,20 @@ module KrikriJinja
   def self.derive_engine(loader : Loader? = nil, options : LexerOptions = LexerOptions.new,
                          undefined : Undefined = Undefined.new,
                          host_context : HostContext? = nil) : Engine
+    source = default_engine
     copy = Engine.new(loader, {} of String => AnyV, options, false, undefined, host_context)
-    copy.finalize = default_engine.finalize
-    copy.dict_pair_unpacking = default_engine.dict_pair_unpacking
-    default_engine.globals.each { |key, value| copy.globals[key] = value }
-    default_engine.filters.each { |key, value| copy.filters[key] = value }
-    default_engine.tests.each { |key, value| copy.tests[key] = value }
+    copy.finalize = source.finalize
+    copy.dict_pair_unpacking = source.dict_pair_unpacking
+    source.rwlock.read do
+      source.globals.each { |key, value| copy.globals[key] = value }
+      source.filters.each { |key, value| copy.filters[key] = value }
+      source.tests.each { |key, value| copy.tests[key] = value }
+    end
     copy
   end
 
   def self.reset_default_engine : Engine
-    @@default_engine = Engine.new
+    @@default_engine_mutex.synchronize { @@default_engine = Engine.new }
   end
 
   def self.register_default_filter(name : String, &block : FilterFn) : Engine

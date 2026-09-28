@@ -1,3 +1,5 @@
+require "sync/rw_lock"
+
 module KrikriJinja
   class Context
     getter scopes : Array(Hash(String, AnyValue))
@@ -22,13 +24,20 @@ module KrikriJinja
     # Pre-boxed shared undefined for this context, reused on name misses.
     getter undefined_any : AnyValue
     @named_undefined_cache : Hash(String, AnyValue)
+    # Shared with the owning Engine (see Engine#rwlock): @globals/@filters/
+    # @tests below are the *same* Hash instances the engine mutates via
+    # register_*, so reads here must take the same lock the engine's writes
+    # take, not a private one.
+    getter rwlock : Sync::RWLock
 
     def initialize(@globals : Hash(String, AnyValue) = {} of String => AnyValue,
                    @loader : Loader? = nil,
                    @autoescape = false,
                    @undefined : Undefined = Undefined.new,
                    @filters : Hash(String, FilterFn) = BUILTIN_FILTERS.dup,
-                   @tests : Hash(String, TestFn) = BUILTIN_TESTS.dup)
+                   @tests : Hash(String, TestFn) = BUILTIN_TESTS.dup,
+                   rwlock : Sync::RWLock? = nil)
+      @rwlock = rwlock || Sync::RWLock.new
       @scopes = [{} of String => AnyValue]
       @blocks = {} of String => Array(Nodes::BlockNode)
       @scope_is_local = [false]
@@ -89,7 +98,7 @@ module KrikriJinja
       if (resolver = @resolver) && (value = resolver.resolve(name))
         return value
       end
-      @globals[name]?
+      @rwlock.read { @globals[name]? }
     end
 
     def has_key?(name : String) : Bool
@@ -103,11 +112,11 @@ module KrikriJinja
     # `| ansible.builtin.ternary(...)` to `ternary`. A single dot is not a
     # collection name (`x | first.to_s` stays unknown, as in jinja).
     def filter(name : String) : FilterFn?
-      @filters[name]? || collection_member(name).try { |short| @filters[short]? }
+      @rwlock.read { @filters[name]? || collection_member(name).try { |short| @filters[short]? } }
     end
 
     def test(name : String) : TestFn?
-      @tests[name]? || collection_member(name).try { |short| @tests[short]? }
+      @rwlock.read { @tests[name]? || collection_member(name).try { |short| @tests[short]? } }
     end
 
     private def collection_member(name : String) : String?
