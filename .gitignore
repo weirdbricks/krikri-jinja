@@ -1,4 +1,5 @@
 .crystal/
+.crystal-build-cache/
 lib/
 bin/
 d.cr
