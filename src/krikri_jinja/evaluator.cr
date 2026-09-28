@@ -1,3 +1,5 @@
+require "sync/rw_lock"
+
 module KrikriJinja
   alias FunctionFn = Proc(Array(AnyValue), Hash(String, AnyValue), Context, AnyValue)
   alias JsonFunctionFn = Proc(Array(JSON::Any), Hash(String, JSON::Any), JSON::Any)
@@ -338,6 +340,17 @@ module KrikriJinja
     getter filters : Hash(String, FilterFn)
     getter tests : Hash(String, TestFn)
 
+    # Guards @template_cache/@expression_cache (mutated on every render/parse)
+    # and @filters/@tests/@globals (read on every render, mutated by
+    # register_*), since Crystal's Hash is not safe for concurrent access
+    # across real OS threads (-Dpreview_mt). One engine instance is commonly
+    # shared across fibers (e.g. KrikriJinja.default_engine), so this can't
+    # rely on the single-fiber-at-a-time guarantee of the default scheduler.
+    # An RWLock (not a Mutex) because filter/test/global lookups happen on
+    # every evaluation and must run concurrently with each other; only
+    # registration and cache inserts need exclusivity.
+    getter rwlock = Sync::RWLock.new
+
     def initialize(@loader : Loader? = nil, user_globals : Hash(String, AnyV) = {} of String => AnyV,
                    @options : LexerOptions = LexerOptions.new, @autoescape : Bool = false,
                    @undefined : Undefined = Undefined.new, @host_context = nil.as(HostContext?))
@@ -355,9 +368,11 @@ module KrikriJinja
       copy = Engine.new(@loader, {} of String => AnyV, @options, @autoescape, undefined, @host_context)
       copy.finalize = @finalize
       copy.dict_pair_unpacking = @dict_pair_unpacking
-      @globals.each { |key, value| copy.globals[key] = value }
-      @filters.each { |key, value| copy.filters[key] = value }
-      @tests.each { |key, value| copy.tests[key] = value }
+      @rwlock.read do
+        @globals.each { |key, value| copy.globals[key] = value }
+        @filters.each { |key, value| copy.filters[key] = value }
+        @tests.each { |key, value| copy.tests[key] = value }
+      end
       copy
     end
 
@@ -370,17 +385,17 @@ module KrikriJinja
     end
 
     def register_filter(name : String, &block : FilterFn) : self
-      @filters[name.downcase] = block
+      @rwlock.write { @filters[name.downcase] = block }
       self
     end
 
     def register_test(name : String, &block : TestFn) : self
-      @tests[name.downcase] = block
+      @rwlock.write { @tests[name.downcase] = block }
       self
     end
 
     def register_global(name : String, value) : self
-      @globals[name] = KrikriJinja.wrap_value(value)
+      @rwlock.write { @globals[name] = KrikriJinja.wrap_value(value) }
       self
     end
 
@@ -451,7 +466,7 @@ module KrikriJinja
     end
 
     private def evaluate_expression_value(source : String, variables) : AnyValue
-      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests, @rwlock)
       ctx.host_context = @host_context
       variables.each { |key, value| ctx[key] = KrikriJinja.wrap_value(value) }
       expression = parsed_expression(source)
@@ -473,7 +488,7 @@ module KrikriJinja
     def evaluate_parsed(expression : Nodes::ExprNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                         resolver : VariableResolver? = nil,
                         undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : AnyValue
-      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests, @rwlock)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -502,7 +517,7 @@ module KrikriJinja
     def render_parsed(node : Nodes::TemplateNode, variables : Hash(String, AnyValue) = {} of String => AnyValue,
                       resolver : VariableResolver? = nil,
                       undefined : Undefined = @undefined, host_context : HostContext? = @host_context) : String
-      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, undefined, @filters, @tests, @rwlock)
       ctx.host_context = host_context
       ctx.resolver = resolver
       variables.each { |key, value| ctx[key] = value }
@@ -525,7 +540,7 @@ module KrikriJinja
     end
 
     private def render_variables(source : String, variables)
-      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests)
+      ctx = Context.new(@globals, @loader, @autoescape, @undefined, @filters, @tests, @rwlock)
       ctx.host_context = @host_context
       ctx.autoescape = @autoescape
       variables.each { |k, v| ctx[k] = KrikriJinja.wrap_value(v) }
@@ -542,25 +557,25 @@ module KrikriJinja
     # mutate them (see the **kwargs fix in `eval_call`).
     def parsed_template(source : String) : Nodes::TemplateNode
       key = "t\x1f#{@options_key}\x1f#{source}"
-      cached = @template_cache[key]?
+      cached = @rwlock.read { @template_cache[key]? }
       return cached if cached
       node = Parser.parse(source, @options)
-      if @template_cache.size >= @@cache_limit
-        @template_cache.clear
+      @rwlock.write do
+        @template_cache.clear if @template_cache.size >= @@cache_limit
+        @template_cache[key] = node
       end
-      @template_cache[key] = node
       node
     end
 
     def parsed_expression(source : String) : Nodes::ExprNode
       key = "e\x1f#{@options_key}\x1f#{source}"
-      cached = @expression_cache[key]?
+      cached = @rwlock.read { @expression_cache[key]? }
       return cached if cached
       node = Parser.parse_expression(source, @options)
-      if @expression_cache.size >= @@cache_limit
-        @expression_cache.clear
+      @rwlock.write do
+        @expression_cache.clear if @expression_cache.size >= @@cache_limit
+        @expression_cache[key] = node
       end
-      @expression_cache[key] = node
       node
     end
 
@@ -1013,7 +1028,7 @@ module KrikriJinja
           @ctx.pop_scope
         end
       else
-        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
+        sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests, @ctx.rwlock)
         sub_ctx.host_context = @ctx.host_context
         sub_eval = Evaluator.new(sub_ctx, @engine)
         sub_eval.render_template(sub_node)
@@ -1026,7 +1041,7 @@ module KrikriJinja
              raise TemplateError.new("import expects a template name", node.line)
       source = @ctx.loader.try(&.get_source(name))
       raise TemplateError.new("template #{name.inspect} not found", node.line, kind: ErrorKind::Loader, template_name: name) unless source
-      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests)
+      sub_ctx = Context.new(@ctx.globals, @ctx.loader, @ctx.autoescape, @ctx.undefined, @ctx.filters, @ctx.tests, @ctx.rwlock)
       sub_ctx.host_context = @ctx.host_context
       if node.context
         sub_ctx.resolver = @ctx.resolver
