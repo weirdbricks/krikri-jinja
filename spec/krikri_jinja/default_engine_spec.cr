@@ -1,36 +1,51 @@
 require "../spec_helper"
 require "../../src/krikri_jinja"
 
+# The default-engine convenience API is one process-wide mutable singleton:
+# `reset_default_engine` swaps it out and every `register_default_*` mutates
+# the current one, so tests exercising that lifecycle must not run
+# concurrently with each other or they race on which registrations are
+# visible. minitest.cr has no per-test serial tag, so serialize explicitly.
+DEFAULT_ENGINE_MUTEX = Mutex.new
+
 describe "KrikriJinja default engine" do
   it "registers filters, tests, functions, and globals for module-level rendering" do
-    KrikriJinja.reset_default_engine
-    KrikriJinja.register_default_json_filter("exclaim") do |value, _args, _kwargs|
-      JSON::Any.new("#{value.as_s}!")
-    end
-    KrikriJinja.register_default_json_test("text") do |value, _args, _kwargs|
-      value.raw.is_a?(String)
-    end
-    KrikriJinja.register_default_json_function("identity") do |args, _kwargs|
-      args[0]
-    end
-    KrikriJinja.register_default_global("answer", JSON::Any.new(42))
+    DEFAULT_ENGINE_MUTEX.synchronize do
+      begin
+        KrikriJinja.reset_default_engine
+        KrikriJinja.register_default_json_filter("exclaim") do |value, _args, _kwargs|
+          JSON::Any.new("#{value.as_s}!")
+        end
+        KrikriJinja.register_default_json_test("text") do |value, _args, _kwargs|
+          value.raw.is_a?(String)
+        end
+        KrikriJinja.register_default_json_function("identity") do |args, _kwargs|
+          args[0]
+        end
+        KrikriJinja.register_default_global("answer", JSON::Any.new(42))
 
-    rendered = KrikriJinja.render("{{ 'hello' | exclaim }} {{ 'hello' is text }} {{ identity([1, true]) | tojson }} {{ answer }}")
-    assert_equal("hello! True [1, true] 42", rendered)
-  ensure
-    KrikriJinja.reset_default_engine
+        rendered = KrikriJinja.render("{{ 'hello' | exclaim }} {{ 'hello' is text }} {{ identity([1, true]) | tojson }} {{ answer }}")
+        assert_equal("hello! True [1, true] 42", rendered)
+      ensure
+        KrikriJinja.reset_default_engine
+      end
+    end
   end
 
   it "exposes registered feature names for compile-time checks" do
-    KrikriJinja.reset_default_engine
-    KrikriJinja.register_default_json_filter("shout") { |value, _args, _kwargs| JSON::Any.new(value.as_s.upcase) }
-    KrikriJinja.register_default_json_test("small") { |value, _args, _kwargs| value.as_i < 10 }
+    DEFAULT_ENGINE_MUTEX.synchronize do
+      begin
+        KrikriJinja.reset_default_engine
+        KrikriJinja.register_default_json_filter("shout") { |value, _args, _kwargs| JSON::Any.new(value.as_s.upcase) }
+        KrikriJinja.register_default_json_test("small") { |value, _args, _kwargs| value.as_i < 10 }
 
-    assert_equal(true, KrikriJinja.default_known_filter?("shout"))
-    assert_equal(true, KrikriJinja.default_known_test?("small"))
-    assert_equal(false, KrikriJinja.default_known_filter?("missing_filter"))
-  ensure
-    KrikriJinja.reset_default_engine
+        assert_equal(true, KrikriJinja.default_known_filter?("shout"))
+        assert_equal(true, KrikriJinja.default_known_test?("small"))
+        assert_equal(false, KrikriJinja.default_known_filter?("missing_filter"))
+      ensure
+        KrikriJinja.reset_default_engine
+      end
+    end
   end
 end
 
@@ -63,16 +78,20 @@ end
 
 describe "KrikriJinja host context" do
   it "hands the caller context to registered functions" do
-    KrikriJinja.reset_default_engine
-    KrikriJinja.register_default_function("greet") do |args, _kwargs, ctx|
-      host = ctx.host_context
-      KrikriJinja.from_json_any(JSON::Any.new("#{host.not_nil!.as(SpecHostContext).prefix}#{KrikriJinja.stringify(args[0].not_nil!)}"))
-    end
+    DEFAULT_ENGINE_MUTEX.synchronize do
+      begin
+        KrikriJinja.reset_default_engine
+        KrikriJinja.register_default_function("greet") do |args, _kwargs, ctx|
+          host = ctx.host_context
+          KrikriJinja.from_json_any(JSON::Any.new("#{host.not_nil!.as(SpecHostContext).prefix}#{KrikriJinja.stringify(args[0].not_nil!)}"))
+        end
 
-    assert_equal("hello world", KrikriJinja.render("{{ greet('world') }}", host_context: SpecHostContext.new("hello ")))
-    assert_equal("hi world", KrikriJinja.evaluate_expression("greet('world')", host_context: SpecHostContext.new("hi "))
-      .not_nil!.as_s)
-  ensure
-    KrikriJinja.reset_default_engine
+        assert_equal("hello world", KrikriJinja.render("{{ greet('world') }}", host_context: SpecHostContext.new("hello ")))
+        assert_equal("hi world", KrikriJinja.evaluate_expression("greet('world')", host_context: SpecHostContext.new("hi "))
+          .not_nil!.as_s)
+      ensure
+        KrikriJinja.reset_default_engine
+      end
+    end
   end
 end
