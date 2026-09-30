@@ -513,15 +513,16 @@ module KrikriJinja
         groups << {key, gkey, [item]}
       end
     end
+    # Real Jinja2 3.x's do_groupby yields _GroupTuple namedtuples
+    # (fields grouper/list) - json.dumps (debug:/tojson) serializes them
+    # as ARRAYS and item.0/item.1 indexing works; a {grouper: ..., list:
+    # ...} hash renders as an object and breaks both.
     grouped = groups.map do |k, _ck, items|
-      h = {} of String => AnyValue
-      h["grouper"] = k
-      h["list"] = AnyValue.new(items)
-      AnyValue.new(h)
+      AnyValue.new([k, AnyValue.new(items)])
     end
     sorted_groups = stable_sort(grouped) do |a, b|
-      ka = a.raw.as(Hash)["grouper"]
-      kb = b.raw.as(Hash)["grouper"]
+      ka = a.raw.as(Array)[0]
+      kb = b.raw.as(Array)[0]
       compare_values(ka, kb)
     end
     AnyValue.new(sorted_groups)
