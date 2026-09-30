@@ -10,3 +10,10 @@ describe "groupby pair shape" do
     assert_equal("[[\"blue\",[{\"color\":\"blue\",\"n\":2}]],[\"red\",[{\"color\":\"red\",\"n\":1},{\"color\":\"red\",\"n\":3}]]]", rendered.gsub(/\s+/, ""))
   end
 end
+
+describe "groupby namedtuple attrs" do
+  it "resolves .grouper/.list on a pair" do
+    rendered = KrikriJinja.render("{% for g in items | groupby('k') %}{{ g.grouper }}={{ g.list | length }};{% endfor %}", {"items" => [{"k" => "b"}, {"k" => "a"}, {"k" => "a"}]})
+    assert_equal("a=2;b=1;", rendered)
+  end
+end
