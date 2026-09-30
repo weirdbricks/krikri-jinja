@@ -1404,6 +1404,18 @@ module KrikriJinja
       end
     when Array, String
       case name
+      when "grouper", "list"
+        # Real Jinja2 3.x groupby yields _GroupTuple namedtuples - a pair
+        # supporting BOTH .grouper/.list attribute access and tuple
+        # indexing/serialization. The groupby filter emits a plain
+        # 2-element array; resolving these two field names on a 2-element
+        # array emulates the namedtuple (a plain list has no .grouper
+        # attribute in real Jinja either - it renders as undefined - but
+        # no real template does that).
+        if raw.is_a?(Array) && raw.size == 2
+          return raw[name == "grouper" ? 0 : 1]
+        end
+        nil
       when "upper"
         if raw.is_a?(String)
           val_up = AnyValue.new(raw.upcase)
