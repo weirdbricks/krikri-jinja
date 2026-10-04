@@ -811,11 +811,20 @@ module KrikriJinja
         if tok.type == TokenType::Op && tok.value == "."
           advance
           attr = current
-          unless attr.type == TokenType::Ident
-            raise TemplateError.new("expected attribute name after '.'", attr.line)
+          case attr.type
+          when TokenType::Ident
+            advance
+            expr = Nodes::GetattrNode.new(expr, attr.value, line)
+          when TokenType::Int
+            # `a.0` is a subscript, not an attribute lookup - it is
+            # exactly `a[0]`, so a dict keyed by the *string* "0" does
+            # not match. Matches Jinja2.
+            advance
+            expr = Nodes::GetitemNode.new(expr,
+              Nodes::ConstNode.new(BigIntValue.parse(attr.value), attr.line), line)
+          else
+            raise TemplateError.new("expected name or number after '.'", attr.line)
           end
-          advance
-          expr = Nodes::GetattrNode.new(expr, attr.value, line)
         elsif tok.type == TokenType::Op && tok.value == "["
           advance
           start, stop, step, is_slice = parse_slice_parts

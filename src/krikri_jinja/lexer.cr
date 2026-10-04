@@ -457,12 +457,19 @@ module KrikriJinja
       line = base_line
       n = src.size
 
+      # Tracks that the previous token was a `.` operator, so a number
+      # directly after it lexes as an integer (Jinja2's float pattern is
+      # `(?<!\.)`-anchored). This is what makes `a.0.0` parse as two
+      # integer subscripts rather than `a` followed by the float `0.0`.
+      prev_was_dot = false
+
       while i < n
         ch = src[i]
 
         if ch == '\n'
           line += 1
           i += 1
+          prev_was_dot = false
           next
         end
         if ch.whitespace?
@@ -474,14 +481,19 @@ module KrikriJinja
         when '(' , ')' , '[' , ']' , '{' , '}' , ',' , ':' , '.' , ';' , '%', '~'
           toks << Token.new(TokenType::Op, ch.to_s, line)
           i += 1
+          prev_was_dot = ch == '.'
         when '+', '-', '*', '/', '>', '<', '=', '!', '|'
           i = read_operator(src, i, toks, line)
+          prev_was_dot = false
         when '"', '\''
           i = verbatim_strings ? read_verbatim_string(src, i, toks, line) : read_string(src, i, toks, line)
+          prev_was_dot = false
         when .number?
-          i = read_number(src, i, toks, line)
+          i = read_number(src, i, toks, line, after_dot: prev_was_dot)
+          prev_was_dot = false
         when .letter?, '_'
           i = read_ident(src, i, toks, line)
+          prev_was_dot = false
         else
           raise TemplateError.new("unexpected character #{ch.inspect}", line)
         end
@@ -606,9 +618,11 @@ module KrikriJinja
       i
     end
 
-    private def read_number(src, i, toks, line, hex_mode = false) : Int32
+    private def read_number(src, i, toks, line, hex_mode = false, after_dot = false) : Int32
       start = i
-      # hex/octal/binary integers: 0x / 0o / 0b prefixes
+      # After a `.` operator the literal is always an integer subscript
+      # target, never a float - `a.0.0` is two subscripts, not `a.0.0`
+      # the float. The hex/octal/binary forms stay valid there.
       if src[i] == '0' && i + 1 < src.size && "xXoObB".includes?(src[i + 1])
         kind = src[i + 1].downcase.to_s
         i += 2
@@ -633,7 +647,12 @@ module KrikriJinja
       while i < src.size && (src[i].number? || src[i] == '_')
         i += 1
       end
-      if i < src.size && (src[i] == 'e' || src[i] == 'E') && !hex_mode
+      # Jinja2's integer literal grammar is `[1-9](_?\d)* | 0(_?0)*`:
+      # a leading zero may only be followed by more zeros. `01` is a
+      # syntax error, while `0`, `00` and `0_0` are all plain zero. Only
+      # enforced on the integer path below - a leading zero is fine in
+      # the float forms (`01.5`, `01e2`).
+      if !after_dot && i < src.size && (src[i] == 'e' || src[i] == 'E') && !hex_mode
         j = i + 1
         j += 1 if j < src.size && (src[j] == '+' || src[j] == '-')
         if j < src.size && src[j].number?
@@ -644,7 +663,7 @@ module KrikriJinja
           return j
         end
       end
-      if i < src.size && src[i] == '.' && i + 1 < src.size && src[i + 1].number?
+      if !after_dot && i < src.size && src[i] == '.' && i + 1 < src.size && src[i + 1].number?
         i += 1
         while i < src.size && src[i].number?
           i += 1
@@ -662,9 +681,20 @@ module KrikriJinja
         end
         toks << Token.new(TokenType::Float, src[start...i], line)
       else
-        toks << Token.new(TokenType::Int, src[start...i].delete('_'), line)
+        text = src[start...i]
+        unless leading_zero_ok?(text)
+          raise TemplateError.new("invalid integer literal #{text.inspect}", line)
+        end
+        toks << Token.new(TokenType::Int, text.delete('_'), line)
       end
       i
+    end
+
+    # A decimal integer starting with 0 is only valid when every digit
+    # after the first is also 0 (`0`, `00`, `0_0`, `0_00`).
+    private def leading_zero_ok?(text : String) : Bool
+      return true unless text.starts_with?('0')
+      text.each_char.with_index.all? { |char, idx| idx == 0 || char == '0' || char == '_' }
     end
 
     private def read_ident(src, i, toks, line) : Int32
