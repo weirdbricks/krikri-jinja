@@ -12121,5 +12121,157 @@
   "templates": {
    "base.html": "{% for i in [1,2] %}{% block item %}{% endblock %}{% endfor %}"
   }
+ },
+ {
+  "name": "numeric subscript",
+  "template": "{{ a.0 }}",
+  "data": {
+   "a": [
+    "x",
+    "y"
+   ]
+  }
+ },
+ {
+  "name": "numeric subscript chained",
+  "template": "{{ a.0.0 }}",
+  "data": {
+   "a": [
+    [
+     "n"
+    ]
+   ]
+  }
+ },
+ {
+  "name": "numeric subscript then attr",
+  "template": "{{ a.0.x }}",
+  "data": {
+   "a": [
+    {
+     "x": "deep"
+    }
+   ]
+  }
+ },
+ {
+  "name": "numeric subscript equals bracket",
+  "template": "{{ a.0 == a[0] }}",
+  "data": {
+   "a": [
+    "x",
+    "y"
+   ]
+  }
+ },
+ {
+  "name": "numeric subscript missing",
+  "template": "{{ a.0 }}",
+  "data": {
+   "a": {
+    "k": "v"
+   }
+  }
+ },
+ {
+  "name": "nested numeric subscript",
+  "template": "{{ item.0.name }}",
+  "data": {
+   "item": [
+    {
+     "name": "n0"
+    },
+    {
+     "name": "n1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "underscore subscript",
+  "template": "{{ a.1_0 }}",
+  "data": {
+   "a": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ]
+  }
+ },
+ {
+  "name": "leading zero subscript errors",
+  "template": "{{ a.01 }}",
+  "data": {
+   "a": [
+    "x"
+   ]
+  }
+ },
+ {
+  "name": "negative subscript errors",
+  "template": "{{ a.-1 }}",
+  "data": {
+   "a": [
+    "x"
+   ]
+  }
+ },
+ {
+  "name": "subscript then index",
+  "template": "{{ a.1.2 }}",
+  "data": {
+   "a": [
+    "p",
+    "q",
+    "r"
+   ]
+  }
+ },
+ {
+  "name": "leading zero integer errors",
+  "template": "{{ 01 }}",
+  "data": {}
+ },
+ {
+  "name": "zero forms",
+  "template": "{{ 0 }} {{ 00 }} {{ 0_0 }} {{ 0_00 }}",
+  "data": {}
+ },
+ {
+  "name": "leading zero float ok",
+  "template": "{{ 01.5 }} {{ 0.5 }} {{ 00.5 }}",
+  "data": {}
+ },
+ {
+  "name": "leading zero exponent ok",
+  "template": "{{ 01e2 }}",
+  "data": {}
+ },
+ {
+  "name": "underscore integer",
+  "template": "{{ 1_000 }}",
+  "data": {}
+ },
+ {
+  "name": "hex octal binary ints",
+  "template": "{{ 0x1f }} {{ 0o17 }} {{ 0b101 }}",
+  "data": {}
+ },
+ {
+  "name": "float not after dot",
+  "template": "{{ 1.5 }} {{ a.0 }}",
+  "data": {
+   "a": [
+    1
+   ]
+  }
  }
 ]

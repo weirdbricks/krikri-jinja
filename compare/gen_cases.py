@@ -2686,6 +2686,27 @@ add("comparison test aliases", "{{ 1 is equalto 1 }} {{ 1 is == 1 }} {{ 1 is != 
 add("filter arity errors", "{{ [1,2] | center(5, 6) }} {{ [1,2] | indent(2, true, true, 4) }}")
 add("scoped block in loop", "{% extends 'base.html' %}{% block item scoped %}[{{ i }}]{% endblock %}", templates={"base.html": "{% for i in [1,2] %}{% block item %}{% endblock %}{% endfor %}"})
 
+# --- integer subscripts: a.0 is a[0], not an attribute lookup -------------
+add("numeric subscript", "{{ a.0 }}", {"a": ["x", "y"]})
+add("numeric subscript chained", "{{ a.0.0 }}", {"a": [["n"]]})
+add("numeric subscript then attr", "{{ a.0.x }}", {"a": [{"x": "deep"}]})
+add("numeric subscript equals bracket", "{{ a.0 == a[0] }}", {"a": ["x", "y"]})
+add("numeric subscript missing", "{{ a.0 }}", {"a": {"k": "v"}})
+add("nested numeric subscript", "{{ item.0.name }}", {"item": [{"name": "n0"}, {"name": "n1"}]})
+add("underscore subscript", "{{ a.1_0 }}", {"a": list(range(11))})
+add("leading zero subscript errors", "{{ a.01 }}", {"a": ["x"]})
+add("negative subscript errors", "{{ a.-1 }}", {"a": ["x"]})
+add("subscript then index", "{{ a.1.2 }}", {"a": ["p", "q", "r"]})
+
+# --- integer literal grammar: [1-9](_?d)* | 0(_?0)* -----------------------
+add("leading zero integer errors", "{{ 01 }}")
+add("zero forms", "{{ 0 }} {{ 00 }} {{ 0_0 }} {{ 0_00 }}")
+add("leading zero float ok", "{{ 01.5 }} {{ 0.5 }} {{ 00.5 }}")
+add("leading zero exponent ok", "{{ 01e2 }}")
+add("underscore integer", "{{ 1_000 }}")
+add("hex octal binary ints", "{{ 0x1f }} {{ 0o17 }} {{ 0b101 }}")
+add("float not after dot", "{{ 1.5 }} {{ a.0 }}", {"a": [1]})
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
