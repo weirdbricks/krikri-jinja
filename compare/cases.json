@@ -1462,6 +1462,51 @@
   "data": {}
  },
  {
+  "name": "format named",
+  "template": "{{ '%(version)s-linux' | format(version='1.2.3') }}",
+  "data": {}
+ },
+ {
+  "name": "format named specs",
+  "template": "{{ '%(a)05d|%(b)-5s|%(a)r|%%' | format(a=7, b='x') }}",
+  "data": {}
+ },
+ {
+  "name": "format named mixed",
+  "template": "{{ '%(a)s %s' | format(a=1) }}",
+  "data": {}
+ },
+ {
+  "name": "format named missing",
+  "template": "{{ '%(missing)s' | format(a=1) }}",
+  "data": {}
+ },
+ {
+  "name": "format kwargs no spec",
+  "template": "{{ 'plain %(ignored)s' | format(a=1) }}",
+  "data": {}
+ },
+ {
+  "name": "format kwargs with positional",
+  "template": "{{ '%s' | format('x', y='z') }}",
+  "data": {}
+ },
+ {
+  "name": "format dict positional operand",
+  "template": "{{ '%(a)s' % {'a': 'v'} }}",
+  "data": {}
+ },
+ {
+  "name": "format tuple dict operand",
+  "template": "{{ '%(a)s' % ({'a': 'v'},) }}",
+  "data": {}
+ },
+ {
+  "name": "format named pct literal",
+  "template": "{{ '100%% of %(n)s' | format(n=5) }}",
+  "data": {}
+ },
+ {
   "name": "filesizeformat neg",
   "template": "{{ -5 | filesizeformat }}",
   "data": {}
@@ -4836,6 +4881,23 @@
  {
   "name": "comment with tags inside",
   "template": "a{# {{ x }} {% if %} #}b",
+  "data": {}
+ },
+ {
+  "name": "comment with apostrophe",
+  "template": "{# Jinja currently doesn't have a native TOML filter #}[{{ x }}]",
+  "data": {
+   "x": 1
+  }
+ },
+ {
+  "name": "comment apostrophe multiline",
+  "template": "{#\n   doesn't \n   nor a \"quote\"\n#}end",
+  "data": {}
+ },
+ {
+  "name": "comment with percent and brace",
+  "template": "{# 50% of {a} and %s #}end",
   "data": {}
  },
  {

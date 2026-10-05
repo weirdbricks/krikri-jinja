@@ -769,4 +769,37 @@ y", render_env("x\n  {% if true %}y{% endif %}", lstrip_blocks: true))
       assert_equal("2,3", KrikriJinja.render("{{ (1, 2, 3)[1:] | join(',') }}"))
     end
   end
+
+  # `format`'s mapping operand and a comment body's own text, both verified
+  # against real Jinja2 3.1.6 through compare/run.sh.
+  describe "parity: format mapping and comment bodies" do
+    it "formats against keyword arguments as a mapping" do
+      assert_equal("1.2.3-linux", KrikriJinja.render("{{ '%(version)s-linux' | format(version='1.2.3') }}"))
+      assert_equal("00007|x    |7|%", KrikriJinja.render("{{ '%(a)05d|%(b)-5s|%(a)r|%%' | format(a=7, b='x') }}"))
+      assert_equal("v", KrikriJinja.render("{{ '%(a)s' % {'a': 'v'} }}"))
+    end
+
+    it "raises CPython's message for a mapping key the format lacks" do
+      assert_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ '%(missing)s' | format(a=1) }}")
+      end
+    end
+
+    it "rejects mixing positional and keyword format arguments" do
+      assert_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ '%s' | format('x', y='z') }}")
+      end
+    end
+
+    it "requires a bare mapping operand for a named format" do
+      assert_raises(KrikriJinja::TemplateError) do
+        KrikriJinja.render("{{ '%(a)s' % ({'a': 'v'},) }}")
+      end
+    end
+
+    it "closes a comment at the first #} whatever its body reads" do
+      assert_equal("A B", KrikriJinja.render("A{# doesn't have a `{{ x }}` or 50% #} B"))
+      assert_equal("end", KrikriJinja.render("{#\n   doesn't\n   nor a \"quote\"\n#}end"))
+    end
+  end
 end

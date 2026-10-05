@@ -74,6 +74,16 @@ module KrikriJinja
   # parenthesized right operand; CPython only errors on leftover args for
   # tuples and scalars, never for lists/dicts/undefined.
   def self.py_format(fmt : String, args : Array(AnyValue), tuple_arg : Bool = true) : String
+    if fmt.includes?("%(")
+      # A format naming its keys needs a MAPPING operand. CPython only
+      # accepts a bare mapping here - `'%(a)s' % ({'a': 1},)` is "format
+      # requires a mapping", so a parenthesized (tuple) operand never
+      # counts even when it holds a dict, and neither does an empty or
+      # non-mapping one.
+      mapping = (!tuple_arg && args.size == 1) ? args[0].raw.as?(Hash) : nil
+      raise TemplateError.new("format requires a mapping", 0) unless mapping
+      return py_format_named(fmt, mapping)
+    end
     idx = 0
     conversions = 0
     fmt.scan(/%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/) { |m| conversions += 1 unless m[4] == "%" }
@@ -97,7 +107,7 @@ module KrikriJinja
         flags = md[1]? || ""
         width_spec = md[2]?
         prec_spec = md[3]?
-        conv = md[4]?.try(&.[-1]) || "s"
+        conv = md[4]?.try(&.[-1]) || 's'
         if conv == '%'
           io << "%"
           next
@@ -120,30 +130,7 @@ module KrikriJinja
         end
         arg = args[idx]? || raise TemplateError.new("not enough arguments for format string", 0)
         idx += 1
-        cfmt = "%#{flags}#{width ? width.to_s : ""}#{prec ? ".#{prec}" : ""}#{conv}"
-        case conv
-        when 's'
-          body = stringify(arg)
-          io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
-        when 'r'
-          body = arg.raw.is_a?(String) ? py_repr_string(arg.raw.as(String)) : stringify(arg)
-          io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
-        when 'd', 'i', 'u'
-          n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) ||
-              (arg.raw.is_a?(Bool) ? (arg.raw ? 1i64 : 0i64) : nil) ||
-              raise TemplateError.new("%d format: a number is required", 0)
-          io << ::sprintf(cfmt, n)
-        when 'x', 'X', 'o'
-          n = arg.raw.as?(Int64) || raise TemplateError.new("an integer is required", 0)
-          io << ::sprintf(cfmt, n)
-        when 'e', 'E', 'f', 'F', 'g', 'G'
-          f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) ||
-              (arg.raw.is_a?(Bool) ? (arg.raw ? 1.0 : 0.0) : nil) ||
-              raise TemplateError.new("a float is required", 0)
-          io << ::sprintf(cfmt, f)
-        else
-          io << stringify(arg)
-        end
+        write_format_conversion(io, conv, flags, width, prec, arg)
       end
       io << fmt[pos..]
     end
@@ -151,6 +138,96 @@ module KrikriJinja
       raise TemplateError.new("not all arguments converted during string formatting", 0)
     end
     out
+  end
+
+  # %-formatting against a MAPPING operand (`'%(name)spec' | format(name=...)`,
+  # `'%(name)s' % {'name': ...}`): each conversion names its key, `%%` is a
+  # literal percent, and anything else CPython cannot take from a mapping
+  # alone is an error with CPython's own wording.
+  private def self.py_format_named(fmt : String, mapping : Hash(String, AnyValue)) : String
+    spec = /%\(([^)]+)\)([-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?([sdixXoeEfFgGr%])/
+    out = String.build do |io|
+      pos = 0
+      fmt.scan(spec) do |match|
+        append_format_text(io, fmt[pos...match.begin(0)])
+        pos = match.end(0)
+        conv = match[5]?.try(&.[-1]) || 's'
+        if conv == '%'
+          io << "%"
+          next
+        end
+        flags = match[2]? || ""
+        width_spec = match[3]?
+        prec_spec = match[4]?
+        raise TemplateError.new("* wants int", 0) if width_spec == "*" || prec_spec == "*"
+        width = width_spec.try(&.to_i?).try(&.to_i64)
+        prec = prec_spec.try(&.to_i?).try(&.to_i64)
+        name = match[1]
+        arg = mapping[name]? || raise TemplateError.new("'#{name}'", 0)
+        write_format_conversion(io, conv, flags, width, prec, arg)
+      end
+      append_format_text(io, fmt[pos..])
+    end
+    out
+  end
+
+  # Literal text between %-conversions: `%%` folds to a single `%`, and any
+  # other percent sign is a conversion CPython cannot satisfy from a mapping
+  # operand - judged with CPython's own wording.
+  private def self.append_format_text(io : String::Builder, text : String) : Nil
+    k = 0
+    while k < text.size
+      if text[k] != '%'
+        io << text[k]
+        k += 1
+        next
+      end
+      if k + 1 < text.size && text[k + 1] == '%'
+        io << '%'
+        k += 2
+        next
+      end
+      tail = text[(k + 1)..]
+      if tail.match(/\A[-+ #0]*(?:\*|\d+)?(?:\.(?:\*|\d+))?([sdixXoeEfFgGr%])/)
+        raise TemplateError.new("not enough arguments for format string", 0)
+      end
+      stripped = tail.lstrip
+      if stripped.starts_with?("(")
+        closing = stripped.index(')')
+        stripped = closing ? stripped[(closing + 1)..].lstrip : stripped
+      end
+      char = stripped[0]?
+      raise TemplateError.new(char ? "unsupported format character '#{char}'" : "incomplete format", 0)
+    end
+  end
+
+  # One %-conversion's rendered output, shared by py_format's positional
+  # loop and py_format_named's mapping loop.
+  private def self.write_format_conversion(io : String::Builder, conv : Char, flags : String, width : Int64?, prec : Int64?, arg : AnyValue) : Nil
+    cfmt = "%#{flags}#{width ? width.to_s : ""}#{prec ? ".#{prec}" : ""}#{conv}"
+    case conv
+    when 's'
+      body = stringify(arg)
+      io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
+    when 'r'
+      body = arg.raw.is_a?(String) ? py_repr_string(arg.raw.as(String)) : stringify(arg)
+      io << (width && body.size < width ? (flags.includes?('-') ? body.ljust(width) : body.rjust(width)) : body)
+    when 'd', 'i', 'u'
+      n = arg.raw.as?(Int64) || arg.raw.as?(Float64).try(&.to_i64) ||
+          (arg.raw.is_a?(Bool) ? (arg.raw ? 1i64 : 0i64) : nil) ||
+          raise TemplateError.new("%d format: a number is required", 0)
+      io << ::sprintf(cfmt, n)
+    when 'x', 'X', 'o'
+      n = arg.raw.as?(Int64) || raise TemplateError.new("an integer is required", 0)
+      io << ::sprintf(cfmt, n)
+    when 'e', 'E', 'f', 'F', 'g', 'G'
+      f = arg.raw.as?(Float64) || arg.raw.as?(Int64).try(&.to_f64) ||
+          (arg.raw.is_a?(Bool) ? (arg.raw ? 1.0 : 0.0) : nil) ||
+          raise TemplateError.new("a float is required", 0)
+      io << ::sprintf(cfmt, f)
+    else
+      io << stringify(arg)
+    end
   end
 
   # str.format: positional ({} and {N}) replacement with {{ }} escapes.

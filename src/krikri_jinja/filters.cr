@@ -596,8 +596,18 @@ module KrikriJinja
     indent = kwargs["indent"]?.try(&.raw.as?(Int64))
     AnyValue.new(to_json_value(v, indent))
   end
-  register_filter("format") do |v, args, _k, _c|
-    AnyValue.new(KrikriJinja.py_format(stringify(v), args))
+  register_filter("format") do |v, args, kwargs, _c|
+    # Jinja2's do_format: mixing the two forms is its own FilterArgumentError,
+    # otherwise the operand is `kwargs or args` - keyword arguments form the
+    # MAPPING operand, positional arguments a tuple.
+    if !args.empty? && !kwargs.empty?
+      raise TemplateError.new("can't handle positional and keyword arguments at the same time", 0)
+    end
+    if kwargs.empty?
+      AnyValue.new(KrikriJinja.py_format(stringify(v), args))
+    else
+      AnyValue.new(KrikriJinja.py_format(stringify(v), [AnyValue.new(kwargs.dup)], false))
+    end
   end
   register_filter("xmlattr") do |v, _a, _k, _c|
     raw = v.raw
@@ -695,8 +705,18 @@ module KrikriJinja
                       : ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
     AnyValue.new(KrikriJinja.filesizeformat(bytes, base, prefixes, binary))
   end
-  register_filter("format") do |v, args, _k, _c|
-    AnyValue.new(KrikriJinja.py_format(stringify(v), args))
+  register_filter("format") do |v, args, kwargs, _c|
+    # Jinja2's do_format: mixing the two forms is its own FilterArgumentError,
+    # otherwise the operand is `kwargs or args` - keyword arguments form the
+    # MAPPING operand, positional arguments a tuple.
+    if !args.empty? && !kwargs.empty?
+      raise TemplateError.new("can't handle positional and keyword arguments at the same time", 0)
+    end
+    if kwargs.empty?
+      AnyValue.new(KrikriJinja.py_format(stringify(v), args))
+    else
+      AnyValue.new(KrikriJinja.py_format(stringify(v), [AnyValue.new(kwargs.dup)], false))
+    end
   end
   register_filter("center") do |v, args, kwargs, _c|
     raise TemplateError.new("center() takes at most 1 positional argument(s)", 0) if args.size > 1

@@ -189,7 +189,15 @@ module KrikriJinja
     # Returns the tag's content end, whether it closed with a `-` strip
     # marker, and whether it closed with a `+` KEEP marker (Jinja2's
     # whitespace-control form that suppresses trim_blocks for that tag).
-    def self.scan_tag_end(src : String, start : Int32, delim_end : String) : Tuple(Int32?, Bool, Bool)
+    #
+    # `comment` marks a COMMENT body, which Jinja2 never scans for string
+    # literals or balanced braces: its comment rule is
+    # `\{#.*?(?:#\}|\Z)` with DOTALL, so the first `#}` closes it however
+    # the text between reads. Running the quote-skipping loop below on a
+    # comment made an apostrophe ("Jinja currently doesn't have...") open a
+    # string that ran past the `#}`, and the whole comment then failed as
+    # `unclosed "{#" tag` (ableton.sccache's templates/config.j2).
+    def self.scan_tag_end(src : String, start : Int32, delim_end : String, comment : Bool = false) : Tuple(Int32?, Bool, Bool)
       p = src.to_unsafe
       src_size = src.bytesize
       d = delim_end.to_unsafe
@@ -198,6 +206,19 @@ module KrikriJinja
       depth = 0
       byte_start = src.char_index_to_byte_index(start)
       return {nil, false, false} unless byte_start.is_a?(Int32)
+      if comment
+        i = byte_start
+        while i < src_size
+          if bytes_match?(p, src_size, i, d, dsize)
+            rs = i > byte_start && p[i - 1] == '-'.ord
+            rp = !rs && i > byte_start && p[i - 1] == '+'.ord
+            char_i = src.byte_index_to_char_index(i).not_nil!
+            return {rs ? char_i - 1 : char_i, rs, rp}
+          end
+          i += 1
+        end
+        return {nil, false, false}
+      end
       i = byte_start
       balance = d0 == '}'.ord
       right_strip = false
@@ -290,8 +311,9 @@ module KrikriJinja
         content_start += 1 if left_strip || plus_left
 
         # find the closer, skipping string literals and (for "}}" closers)
-        # balancing braces so dict literals with "}}" endings work
-        close_idx, right_strip, plus_right = Lexer.scan_tag_end(src, content_start, delim_end)
+        # balancing braces so dict literals with "}}" endings work - a
+        # COMMENT body is the exception, scanned as plain text
+        close_idx, right_strip, plus_right = Lexer.scan_tag_end(src, content_start, delim_end, opening == opts.comment_start)
         unless close_idx
           raise TemplateError.new("unclosed #{opening.inspect} tag", line)
         end
