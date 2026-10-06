@@ -62,6 +62,7 @@ module KrikriJinja
     # same name are memoized: repeated misses (optional vars, `defined`
     # checks, `loop.parent`) would otherwise allocate on every lookup.
     def undefined_named(name : String, hint : String? = nil) : AnyValue
+      KrikriJinja.note_miss
       if hint.nil?
         if (cached = @named_undefined_cache[name]?)
           return cached

@@ -13,6 +13,25 @@ require "./krikri_jinja/globals"
 module KrikriJinja
   VERSION = "0.4.19"
 
+  # Per-fiber count of undefined VALUE creations (a missing variable name,
+  # a missing attribute/key on a resolved container, an attribute on a
+  # scalar) - the cheap "a miss happened somewhere in this evaluation"
+  # signal krikri's strict-undefined probe gate reads as a before/after
+  # delta. Monotonic by design (never reset): a caller captures the count
+  # before evaluating an expression and compares after, so concurrent
+  # fibers each see only their own increments and a missed reset can never
+  # hide a signal. Keyed by fiber because substitution never yields.
+  @@miss_signals = {} of Fiber => Int32
+
+  def self.note_miss : Nil
+    fiber = Fiber.current
+    @@miss_signals[fiber] = (@@miss_signals[fiber]? || 0) + 1
+  end
+
+  def self.miss_count : Int32
+    @@miss_signals[Fiber.current]? || 0
+  end
+
   @@quote_table : Array(Bool)?
   @@quote_table_mutex = Mutex.new
 

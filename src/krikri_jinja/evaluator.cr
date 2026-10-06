@@ -1459,9 +1459,19 @@ module KrikriJinja
              # STRING container is the exception - Python raises there.
              when "in"
                if left.raw.is_a?(Undefined)
+                 # The STRING-container TypeError keeps its precedence
+                 # over the undefined error even for a STRICT undefined
+                 # left operand - live-verified vs 2.19.11: `nope in
+                 # 'abc'` fails with "'in <string>' requires string as
+                 # left operand, not UndefinedMarker", not the undefined
+                 # error. The strict undefined raise below only covers
+                 # the non-string containers, where the membership check
+                 # itself consumes the value (live-verified matrix:
+                 # `d.missing in [1]` fails with the attribute error).
                  if right.raw.is_a?(String)
                    raise TemplateError.new("'in <string>' requires string as left operand, not UndefinedMarker", expr.line)
                  end
+                 raise TemplateError.new(KrikriJinja.undefined_message(left.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined) if left.raw.as(Undefined).strict?
                  false
                else
                  contains?(right, left)
@@ -1471,6 +1481,7 @@ module KrikriJinja
                  if right.raw.is_a?(String)
                    raise TemplateError.new("'in <string>' requires string as left operand, not UndefinedMarker", expr.line)
                  end
+                 raise TemplateError.new(KrikriJinja.undefined_message(left.raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined) if left.raw.as(Undefined).strict?
                  true
                else
                  !contains?(right, left)
@@ -1494,8 +1505,31 @@ module KrikriJinja
 
     private def eval_test(expr : Nodes::TestNode) : Bool
       value = eval(expr.target)
+      # ansible-core 2.19 raises on EVERY test applied to an undefined
+      # value except the two undefined-introspection tests themselves
+      # (live-verified matrix vs 2.19.11: `is none`, `is string`,
+      # `is sequence`, `is match('x')`, ... all fail the task with the
+      # undefined error; only `is defined`/`is undefined` answer
+      # leniently). The lenient undefined keeps the old no-raise
+      # behavior - only a STRICT undefined reaching a consuming test
+      # raises.
       t = @ctx.test(expr.name) ||
           raise TemplateError.new("unknown test #{expr.name.inspect}", expr.line)
+      # ansible-core 2.19 raises on EVERY test applied to an undefined
+      # value except the two undefined-introspection tests themselves
+      # (live-verified matrix vs 2.19.11: `is none`, `is string`,
+      # `is sequence`, `is match('x')`, ... all fail the task with the
+      # undefined error; only `is defined`/`is undefined` answer
+      # leniently). The name check above stays first - real resolves
+      # every test name at COMPILE time, so `nope is equal(1)` fails
+      # with "No test named 'equal'." even though its operand is
+      # undefined (live-verified). The lenient undefined keeps the old
+      # no-raise behavior - only a STRICT undefined reaching a consuming
+      # test raises.
+      if (raw = value.raw).is_a?(Undefined) && raw.as(Undefined).strict? &&
+         expr.name != "defined" && expr.name != "undefined"
+        raise TemplateError.new(KrikriJinja.undefined_message(raw.as(Undefined)), expr.line, kind: ErrorKind::Undefined)
+      end
       args = expr.args.flat_map do |a|
         v = eval(a)
         v.raw.is_a?(TupleValue) ? v.raw.as(TupleValue).items : [v]
