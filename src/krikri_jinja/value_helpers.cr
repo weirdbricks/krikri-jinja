@@ -179,13 +179,32 @@ module KrikriJinja
     when Int64 then k.to_s
     when BigIntValue then k.value
     when Float64
+      # The plain to_s form keeps `d[5.7]` hitting the "5.7" string the JSON
+      # round trip stored the float YAML key under (Oefenweb.percona_server's
+      # `percona_server_libmysqlclient_map[percona_server_version]` - real
+      # Python matches float keys by value, d[5.7] hits key 5.7, while the
+      # truncation-only fallback below rendered the whole lookup as
+      # undefined).
+      k.to_s
+    else nil
+    end
+  end
+
+  # The integral-truncation form of a numeric key ("8" for 8.0) - the
+  # int/float key-equivalence fallback dict_lookup tries after the plain
+  # string form (Python: d[8] also hits a float 8.0 key, d[8.0] hits an
+  # int 8 key).
+  def self.dict_key_plain_integral(v : AnyValue) : String?
+    case k = v.raw
+    when Float64
       (k == k.trunc && k.abs <= 9223372036854775807.0) ? k.trunc.to_i64.to_s : nil
     else nil
     end
   end
 
   # One dict lookup for every call site: the type-preserving encoding,
-  # then the True/1 equivalence alternate, then the plain string form.
+  # then the True/1 equivalence alternate, then the plain string form,
+  # then the integral-truncation form.
   def self.dict_lookup(raw : Hash(String, AnyValue), key : AnyValue) : AnyValue?
     encoded = dict_key(key)
     found = raw[encoded]?
@@ -196,6 +215,10 @@ module KrikriJinja
     unless found
       plain = dict_key_plain(key)
       found = raw[plain]? if plain
+    end
+    unless found
+      integral = dict_key_plain_integral(key)
+      found = raw[integral]? if integral
     end
     found
   end
