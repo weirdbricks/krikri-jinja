@@ -173,12 +173,12 @@ describe KrikriJinja do
       assert_equal("0 31", KrikriJinja.render("{{ '0x1f' | int }} {{ '0x1f' | int(0, base=16) }}"))
     end
 
+    # ansible-core 2.19 materializes filter outputs at the call boundary
+    # (live-verified: `{{ items | unique(attribute='k') | length }}` renders
+    # 2 in real), so unique results no longer behave as bare generators here.
     it "unique with attribute" do
       ctx = KrikriJinja.context({"items" => [{"k" => 1}, {"k" => 1}, {"k" => 2}]})
-      # unique returns a python generator, which has no length
-      assert_raises(KrikriJinja::TemplateError) do
-        KrikriJinja.render("{{ items | unique(attribute='k') | length }}", ctx)
-      end
+      assert_equal("2", KrikriJinja.render("{{ items | unique(attribute='k') | length }}", ctx))
       assert_equal("2", KrikriJinja.render("{{ items | unique(attribute='k') | list | length }}", ctx))
     end
 

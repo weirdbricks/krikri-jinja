@@ -223,6 +223,13 @@ module KrikriJinja
 
   # Marker for callable values (macros and host-provided functions).
   abstract class Callable
+    # ansible-core 2.19 materializes plugin outputs at the call boundary but
+    # NOT jinja-core builtins (range/dict/lipsum/cycler/... stay unmaterialized:
+    # `{% set r = range(3) %}{{ r + [9] }}` fails in real with "unsupported
+    # operand type(s) for +: 'range' and 'list'"). BUILTIN_GLOBALS marks its
+    # entries so the evaluator wraps only everything else.
+    property? jinja_builtin : Bool = false
+
     abstract def call(args : Array(AnyValue), kwargs : Hash(String, AnyValue), ctx : Context) : AnyValue
   end
 

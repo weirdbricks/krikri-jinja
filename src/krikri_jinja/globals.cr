@@ -168,6 +168,13 @@ module KrikriJinja
     AnyValue.new(Joiner.new(sep))
   end)
 
+  # These are jinja-core builtins, not ansible plugins: real ansible-core does
+  # NOT wrap their outputs at the call boundary (range/dict/lipsum/cycler/
+  # joiner/namespace/random), so the evaluator must not materialize them.
+  BUILTIN_GLOBALS.each_value do |value|
+    value.raw.as?(Callable).try(&.jinja_builtin = true)
+  end
+
   def self.default_globals : Hash(String, AnyValue)
     BUILTIN_GLOBALS.dup
   end

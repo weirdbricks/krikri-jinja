@@ -1500,7 +1500,17 @@ module KrikriJinja
           raise TemplateError.new("unknown filter #{expr.name.inspect}", expr.line)
       args = expr.args.map { |a| eval(a) }
       kwargs = eval_kwargs(expr.kwargs)
-      f.call(value, args, kwargs, @ctx)
+      result = f.call(value, args, kwargs, @ctx)
+      # ansible-core 2.19 consumes the iterator/generator result of every
+      # filter call at the call boundary (_wrap_plugin_output in
+      # ansible/_internal/_templating/_jinja_bits.py), so `x | select(...)`
+      # reaches the next operation (`| length`, `+ [9]`, `{% set %}`) as a real
+      # list - including jinja-core builtin filters like batch/groupby/zip/
+      # slice, whose generators real also consumes (live-verified vs 2.19.11).
+      # Materialize the engine's lazy GeneratorValue results at this boundary;
+      # jinja-core builtin GLOBAL functions stay unwrapped (see eval_call).
+      raw = result.raw
+      raw.is_a?(GeneratorValue) ? AnyValue.new(raw.materialize) : result
     end
 
     private def eval_test(expr : Nodes::TestNode) : Bool
@@ -1727,7 +1737,19 @@ module KrikriJinja
       kwargs = eval_kwargs(kw_exprs)
       case raw = func.raw
       when Callable
-        raw.call(args, kwargs, @ctx)
+        result = raw.call(args, kwargs, @ctx)
+        # Global function calls: real materializes ansible PLUGIN outputs at
+        # the call boundary but NOT jinja-core builtins - live-verified vs
+        # 2.19.11: `{% set r = range(3) %}{{ r + [9] }}` fails in real with
+        # "unsupported operand type(s) for +: 'range' and 'list'", while
+        # `query`/`lookup`/`now` (host-registered, non-builtin) are plugin
+        # outputs. So only non-builtin callables get their generator results
+        # consumed here; builtin marks live in BUILTIN_GLOBALS (globals.cr).
+        if !raw.jinja_builtin? && (gen = result.raw).is_a?(GeneratorValue)
+          AnyValue.new(gen.materialize)
+        else
+          result
+        end
       when LoopCallable
         raw.call(args, kwargs, @ctx)
       when Markup
