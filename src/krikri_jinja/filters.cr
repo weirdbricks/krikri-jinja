@@ -1454,8 +1454,6 @@ module KrikriJinja
         else
           nil
         end
-      when "reverse"
-        raw.is_a?(String) ? AnyValue.new(raw.reverse) : nil
       when "first"
         case raw
         when Array then raw.first?
@@ -1490,8 +1488,22 @@ module KrikriJinja
         end
       when "replace"
         raw.is_a?(String) ? string_method(raw, name) : nil
+      when "index", "count", "extend", "insert", "pop", "remove", "reverse", "sort"
+        # Python LIST methods real Jinja2 exposes through attribute access
+        # (bilalcaliskan.zookeeper's zoo.cfg.j2 calls
+        # groups['zookeepers'].index(inventory_hostname), round 5410000).
+        # Real-wording probes: index(missing) -> TemplateError "'z' is not
+        # in list" (Python's ValueError text); index/count take the value
+        # (index also start/end slice bounds); extend/insert/pop/remove/
+        # reverse/sort mutate in place and return None (sort with no
+        # args - key= kwargs are not supported and raise).
+        if raw.is_a?(String)
+          string_method(raw, name)
+        else
+          array_method(raw, name)
+        end
       when "split", "rsplit", "startswith", "endswith", "strip", "lstrip",
-           "rstrip", "count", "find", "index", "join", "format", "zfill",
+           "rstrip", "find", "join", "format", "zfill",
            "ljust", "rjust", "partition", "rpartition", "splitlines",
            "removeprefix", "removesuffix", "expandtabs", "casefold", "swapcase",
            "isdigit", "isalpha", "center", "rfind", "islower", "isupper",
@@ -1523,6 +1535,74 @@ module KrikriJinja
       end
     else nil
     end
+  end
+
+
+  # Python list methods behind Jinja attribute access (see the dispatch
+  # arm in get_attr). Value equality is Jinja's own values_equal.
+  private def self.array_method(a : Array(AnyValue), name : String) : AnyValue?
+    impl = case name
+           when "index"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               needle = args[0]
+               from = args[1]?.try(&.raw.as?(Int64)) || 0
+               to = args[2]?.try(&.raw.as?(Int64)) || a.size
+               from += a.size if from < 0
+               to += a.size if to < 0
+               from.clamp(0, a.size)
+               to.clamp(from, a.size)
+               from.upto(to - 1).each do |i|
+                 return AnyValue.new(i.to_i64) if KrikriJinja.values_equal(a[i], needle)
+               end
+               raise TemplateError.new("'#{KrikriJinja.stringify(needle)}' is not in list", 0)
+             end
+           when "count"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               needle = args[0]
+               n = a.count { |x| KrikriJinja.values_equal(x, needle) }
+               AnyValue.new(n.to_i64)
+             end
+           when "extend"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               KrikriJinja.to_iterable(args[0]).each { |x| a << x }
+               AnyValue.new(nil)
+             end
+           when "insert"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               i = (args[0].raw.as?(Int64) || 0).clamp(-a.size, a.size)
+               i += a.size if i < 0
+               a.insert(i, args[1])
+               AnyValue.new(nil)
+             end
+           when "pop"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               raise TemplateError.new("pop from empty list", 0) if a.empty?
+               i = (args[0]?.try(&.raw.as?(Int64)) || -1)
+               raise TemplateError.new("pop index out of range", 0) if i >= a.size || i < -a.size
+               a.delete_at(i < 0 ? i + a.size : i)
+             end
+           when "remove"
+             ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               needle = args[0]
+               idx = a.index { |x| KrikriJinja.values_equal(x, needle) }
+               raise TemplateError.new("list.remove(x): x not in list", 0) unless idx
+               a.delete_at(idx)
+               AnyValue.new(nil)
+             end
+           when "reverse"
+             ->(_args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
+               a.reverse!
+               AnyValue.new(nil)
+             end
+           when "sort"
+             ->(_args : Array(AnyValue), k : Hash(String, AnyValue), _c : Context) do
+               raise TemplateError.new("'key' is an invalid keyword argument for sort()", 0) if k.has_key?("key") || k.has_key?("reverse")
+               a.sort! { |x, y| (KrikriJinja.compare_values(x, y) || 0) }
+               AnyValue.new(nil)
+             end
+           else nil
+           end
+    impl ? AnyValue.new(KrikriJinja::SimpleCallable.new(name) { |args, kwargs, c| impl.call(args, kwargs, c) }) : nil
   end
 
   def self.to_json_value(v : AnyValue, indent : Int64? = nil) : String

@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.19"
+  VERSION = "0.4.32"
 
   # Per-fiber count of undefined VALUE creations (a missing variable name,
   # a missing attribute/key on a resolved container, an attribute on a
