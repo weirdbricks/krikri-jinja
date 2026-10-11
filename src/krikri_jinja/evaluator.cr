@@ -1126,8 +1126,19 @@ module KrikriJinja
       when Nodes::CondExprNode
         if truthy?(eval(expr.test))
           eval(expr.truthy)
+        elsif falsy = expr.falsy
+          eval(falsy)
         else
-          expr.falsy ? eval(expr.falsy.not_nil!) : @ctx.undefined_any
+          # An else-less conditional (`{{ 'A' if false }}`) yields the BASE
+          # Undefined class - real Jinja2's generated code binds
+          # `cond_expr_undefined = Undefined` in every template module,
+          # deliberately bypassing the environment's (possibly Strict)
+          # undefined class - so it renders as "", is `is defined` ->
+          # False, and feeds `| default(...)`, instead of raising the way
+          # a failed variable lookup does. Base Undefined is NOT chainable:
+          # attribute/item access on it raises, like Jinja2's own base
+          # Undefined (_fail_with_undefined_error).
+          AnyValue.new(Undefined.new)
         end
       when Nodes::FilterNode
         eval_filter(expr)
