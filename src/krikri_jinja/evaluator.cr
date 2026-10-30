@@ -860,6 +860,13 @@ module KrikriJinja
         loop_value = AnyValue.new(loop_obj)
         old_lil = @ctx.loop_is_local
         @ctx.loop_is_local = false
+        # This template's OWN for loop owns `loop` for its body, even when
+        # an enclosing include hid the includer's loop var (real jinja2:
+        # an included template never sees the includer's `loop`, but its
+        # own loops always have one - martin-micimo.haproxy's
+        # haproxy.cfg.j2 includes hit "'loop' is undefined" otherwise).
+        old_hide_loop = @ctx.hide_loop_var
+        @ctx.hide_loop_var = false
         @ctx.push_scope(false)
         begin
           items.each_with_index do |item, i|
@@ -871,6 +878,7 @@ module KrikriJinja
         ensure
           @ctx.pop_scope
           @ctx.loop_is_local = old_lil
+          @ctx.hide_loop_var = old_hide_loop
           if parent_loop.nil?
             @ctx.delete("loop")
           else
@@ -885,6 +893,11 @@ module KrikriJinja
       loop_value = AnyValue.new(loop_obj)
       old_lil = @ctx.loop_is_local
       @ctx.loop_is_local = true
+      # Same own-loop visibility rule as the recursive path above: the
+      # include-time hide_loop_var must not mask THIS loop's own `loop`
+      # inside its body.
+      old_hide_loop = @ctx.hide_loop_var
+      @ctx.hide_loop_var = false
       @ctx.push_scope(true)
       begin
         items.each_with_index do |item, i|
@@ -901,6 +914,7 @@ module KrikriJinja
       ensure
         @ctx.pop_scope
         @ctx.loop_is_local = old_lil
+        @ctx.hide_loop_var = old_hide_loop
         if parent_loop.nil?
           @ctx.delete("loop")
         else

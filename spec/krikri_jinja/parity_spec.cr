@@ -249,6 +249,26 @@ describe KrikriJinja do
       end
     end
 
+    it "gives an included template's own for loop its own loop variable" do
+      # Real jinja2 (verified via python -c): an included template never
+      # sees the includer's `loop` ({{ loop is defined }} is false in the
+      # included template's top level), but its own for loops always have
+      # one - the include-time hide must not mask the included template's
+      # own loop body. Ansible's martin-micimo.haproxy renders
+      # haproxy.cfg.j2 whose includes use `loop.last` right after a
+      # nested `{% endfor %}`; the stale hide made those raise
+      # "'loop' is undefined".
+      engine = KrikriJinja::Engine.new(KrikriJinja::DictLoader.new({
+        "inner.j2" => "{% for x in items %}{% for y in x.vars %}{{ y }}{% endfor %}{% if not loop.last %}|{% endif %}{% endfor %}",
+        "outer.j2" => "{% for i in [1,2] %}{% include 'inner.j2' %}{{ loop is defined }}{% endfor %}",
+      }))
+      items = KrikriJinja::AnyValue.new([
+        KrikriJinja::AnyValue.new({"name" => KrikriJinja::AnyValue.new("one"), "vars" => KrikriJinja::AnyValue.new([KrikriJinja::AnyValue.new("a"), KrikriJinja::AnyValue.new("b")])} of String => KrikriJinja::AnyValue),
+        KrikriJinja::AnyValue.new({"name" => KrikriJinja::AnyValue.new("two"), "vars" => KrikriJinja::AnyValue.new([KrikriJinja::AnyValue.new("c")])} of String => KrikriJinja::AnyValue),
+      ] of KrikriJinja::AnyValue)
+      assert_equal("ab|cTrueab|cTrue", engine.render_string("{% include 'outer.j2' %}", KrikriJinja.context({"items" => items})))
+    end
+
     it "keeps imported macros free of caller context" do
       assert_equal("none", KrikriJinja::Engine.new(KrikriJinja::DictLoader.new(
         {"m.html" => "{% macro g() %}{{ greeting | default('none') }}{% endmacro %}"}
