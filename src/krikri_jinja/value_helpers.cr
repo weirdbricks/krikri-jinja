@@ -5,33 +5,33 @@ module KrikriJinja
     when Undefined
       raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
       false
-    when Nil then false
-    when Bool then v
-    when Int64 then v != 0
+    when Nil         then false
+    when Bool        then v
+    when Int64       then v != 0
     when BigIntValue then !v.zero?
-    when Float64 then v != 0.0
-    when String then !v.empty?
-    when Array then !v.empty?
-    when Hash then !v.empty?
-    when TupleValue then !v.items.empty?
-    when Markup then !v.value.empty?
-    when HostObject then v.truthy?
-    else true
+    when Float64     then v != 0.0
+    when String      then !v.empty?
+    when Array       then !v.empty?
+    when Hash        then !v.empty?
+    when TupleValue  then !v.items.empty?
+    when Markup      then !v.value.empty?
+    when HostObject  then v.truthy?
+    else                  true
     end
   end
 
   # Python's type name for a value, as error messages report it.
   def self.type_label(value : AnyValue) : String
     case value.raw
-    when Nil                 then "NoneType"
-    when Bool                then "bool"
-    when Int64, BigIntValue  then "int"
-    when Float64             then "float"
-    when String, Markup      then "str"
-    when Array               then "list"
-    when Hash                then "dict"
-    when TupleValue          then "tuple"
-    else                          value.raw.class.name.split("::").last
+    when Nil                then "NoneType"
+    when Bool               then "bool"
+    when Int64, BigIntValue then "int"
+    when Float64            then "float"
+    when String, Markup     then "str"
+    when Array              then "list"
+    when Hash               then "dict"
+    when TupleValue         then "tuple"
+    else                         value.raw.class.name.split("::").last
     end
   end
 
@@ -44,15 +44,15 @@ module KrikriJinja
         when Undefined
           raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
           ""
-        when Nil        then "None"
-        when Bool       then v ? "True" : "False"
-        when Int64      then v.to_s
+        when Nil   then "None"
+        when Bool  then v ? "True" : "False"
+        when Int64 then v.to_s
         when BigIntValue
           check_int_str_limit(v.value)
           v.value
-        when Float64    then format_float(v)
-        when String     then v
-        when Array      then "[" + v.map { |x| stringify_repr(x) }.join(", ") + "]"
+        when Float64 then format_float(v)
+        when String  then v
+        when Array   then "[" + v.map { |x| stringify_repr(x) }.join(", ") + "]"
         when TupleValue
           if v.items.size == 1
             "(" + stringify_repr(v.items[0]) + ",)"
@@ -95,12 +95,12 @@ module KrikriJinja
       io << quote
       s.each_char do |c|
         case c
-        when '\\'      then io << "\\\\"
-        when '\n'      then io << "\\n"
-        when '\r'      then io << "\\r"
-        when '\t'      then io << "\\t"
-        when quote     then io << "\\#{quote}"
-        when '\u007f'  then io << "\\x7f"
+        when '\\'     then io << "\\\\"
+        when '\n'     then io << "\\n"
+        when '\r'     then io << "\\r"
+        when '\t'     then io << "\\t"
+        when quote    then io << "\\#{quote}"
+        when '\u007f' then io << "\\x7f"
         else
           if c.ord < 0x20
             io << "\\x#{c.ord.to_s(16).rjust(2, '0')}"
@@ -120,9 +120,9 @@ module KrikriJinja
     when Undefined
       raise TemplateError.new(KrikriJinja.undefined_message(v), 0, kind: ErrorKind::Undefined) if v.strict?
       "Undefined"
-    when Markup then "Markup(#{py_repr_string(v.value)})"
+    when Markup     then "Markup(#{py_repr_string(v.value)})"
     when HostObject then v.repr
-    else stringify(value)
+    else                 stringify(value)
     end
   end
 
@@ -132,10 +132,10 @@ module KrikriJinja
 
   def self.dict_key(v : AnyValue) : String
     case k = v.raw
-    when String then k
+    when String      then k
     when BigIntValue then "#{KEY_MARKER}i:#{k.value}"
-    when Bool   then "#{KEY_MARKER}b:#{k ? "true" : "false"}"
-    when Int64  then "#{KEY_MARKER}i:#{k}"
+    when Bool        then "#{KEY_MARKER}b:#{k ? "true" : "false"}"
+    when Int64       then "#{KEY_MARKER}i:#{k}"
     when Float64
       # python: 1.0 == 1 and hashes equal, so canonicalize integral floats
       if k == k.trunc && k.abs <= 9223372036854775807.0
@@ -143,7 +143,7 @@ module KrikriJinja
       else
         "#{KEY_MARKER}f:#{format_float(k)}"
       end
-    when Nil    then "#{KEY_MARKER}n"
+    when Nil       then "#{KEY_MARKER}n"
     when Undefined then "#{KEY_MARKER}u"
     when TupleValue
       "#{KEY_MARKER}t:" + k.items.map { |i| dict_key(i) }.join("\u0001")
@@ -154,10 +154,10 @@ module KrikriJinja
   # Alternate encoding for python's 1 == True key equivalence, or nil.
   def self.dict_key_alt(v : AnyValue) : String?
     case k = v.raw
-    when Bool   then "#{KEY_MARKER}i:#{k ? 1 : 0}"
-    when Int64  then (k == 1 || k == 0) ? "#{KEY_MARKER}b:#{k == 1}" : nil
+    when Bool        then "#{KEY_MARKER}i:#{k ? 1 : 0}"
+    when Int64       then (k == 1 || k == 0) ? "#{KEY_MARKER}b:#{k == 1}" : nil
     when BigIntValue then (k.value == "1" || k.zero?) ? "#{KEY_MARKER}b:#{k.value == "1"}" : nil
-    else nil
+    else                  nil
     end
   end
 
@@ -176,7 +176,7 @@ module KrikriJinja
   # does not make.
   def self.dict_key_plain(v : AnyValue) : String?
     case k = v.raw
-    when Int64 then k.to_s
+    when Int64       then k.to_s
     when BigIntValue then k.value
     when Float64
       # The plain to_s form keeps `d[5.7]` hitting the "5.7" string the JSON
@@ -244,7 +244,7 @@ module KrikriJinja
     v = decode_key(k).raw
     case v
     when String then py_repr_string(v)
-    else stringify(AnyValue.new(v))
+    else             stringify(AnyValue.new(v))
     end
   end
 
@@ -315,7 +315,7 @@ module KrikriJinja
         when '>'  then io << "&gt;"
         when '"'  then io << "&#34;"
         when '\'' then io << "&#39;"
-        else io << char
+        else           io << char
         end
       end
     end
@@ -345,9 +345,9 @@ module KrikriJinja
     elsif x.is_a?(Int64) && y.is_a?(BigIntValue)
       big_string_int_cmp(y.value, x) == 0
     elsif x.is_a?(BigIntValue) && y.is_a?(Float64)
-      x.to_f64 == y
+      !y.nan? && big_string_float_cmp(x.value, y) == 0
     elsif x.is_a?(Float64) && y.is_a?(BigIntValue)
-      x == y.to_f64
+      !x.nan? && big_string_float_cmp(y.value, x) == 0
     elsif x.is_a?(BigIntValue) && y.is_a?(Bool)
       (y ? 1 : 0) == 1 && x.value == "1" || !y && x.zero?
     elsif x.is_a?(Bool) && y.is_a?(BigIntValue)
@@ -419,9 +419,9 @@ module KrikriJinja
     elsif x.is_a?(Int64) && y.is_a?(BigIntValue)
       -big_string_int_cmp(y.value, x)
     elsif x.is_a?(BigIntValue) && y.is_a?(Float64)
-      (x.to_f64 <=> y) || 0
+      big_string_float_cmp(x.value, y)
     elsif x.is_a?(Float64) && y.is_a?(BigIntValue)
-      (x <=> y.to_f64) || 0
+      -big_string_float_cmp(y.value, x)
     elsif x.is_a?(BigIntValue) && y.is_a?(Bool)
       big_string_int_cmp(x.value, y ? 1i64 : 0i64)
     elsif x.is_a?(Bool) && y.is_a?(BigIntValue)
@@ -468,6 +468,7 @@ module KrikriJinja
       raise TemplateError.new("cannot compare #{x.class} and #{y.class}", 0)
     end
   end
+
   def self.big_string_cmp(a : String, b : String) : Int32
     aneg = a.starts_with?('-')
     bneg = b.starts_with?('-')
@@ -483,6 +484,61 @@ module KrikriJinja
     return sneg ? -1 : 1 if sneg != ineg
     mag = KrikriJinja.big_cmp(s.lstrip('-'), (i >= 0 ? i : -i).to_s)
     sneg ? -mag : mag
+  end
+
+  # Exact comparison of a decimal-string integer against a Float64.
+  # Python's int/float comparison is exact arithmetic; converting the
+  # digits to Float64 instead both rounds and overflows past ~1.8e308
+  # (an RSA modulus raises on the conversion outright). The float
+  # decomposes EXACTLY as mantissa * 2^exponent (Math.frexp is exact for
+  # IEEE doubles); both sides are scaled to plain integers by a power of
+  # two - computed by repeated doubling with the big-multiplication
+  # helper, since the exponent reaches +-1074 - and compared as decimal
+  # strings. Returns 0 for a NaN operand only because a total order
+  # cannot express Python's all-False NaN comparisons; equality checks
+  # NaN separately.
+  def self.big_string_float_cmp(s : String, f : Float64) : Int32
+    return 0 if f.nan?
+    sneg = s.starts_with?('-')
+    return f > 0 ? -1 : 1 if f.infinite?
+    mag = s.lstrip('-')
+    return f > 0 ? -1 : (f < 0 ? 1 : 0) if mag == "0"
+    return sneg ? -1 : 1 if f == 0.0
+    combine_sign_magnitude(sneg, magnitude_cmp_float(mag, f.abs), f < 0)
+  end
+
+  # Applies the two operands' signs to a |a| <=> |b| result (the same
+  # rule Krikri.bigint_cmp follows).
+  private def self.combine_sign_magnitude(sneg : Bool, mag_cmp : Int32, fneg : Bool) : Int32
+    if sneg && fneg
+      -mag_cmp
+    elsif sneg || fneg
+      sneg ? -1 : 1
+    else
+      mag_cmp
+    end
+  end
+
+  # |mag| <=> |af| for a nonzero unsigned decimal string and a finite
+  # positive float - the exact part of big_string_float_cmp.
+  private def self.magnitude_cmp_float(mag : String, af : Float64) : Int32
+    frac, exp = Math.frexp(af)
+    m53 = (frac * 9007199254740992.0).round.to_i64
+    e = exp - 53
+    if e >= 0
+      KrikriJinja.big_cmp(mag, scale_pow2(m53.to_s, e))
+    else
+      KrikriJinja.big_cmp(scale_pow2(mag, -e), m53.to_s)
+    end
+  end
+
+  # The decimal string of *dec* * 2^*exp* (exp >= 0), by repeated
+  # doubling - the exponent only ever comes from a Float64's binary
+  # exponent, so at most ~1100 doublings of a short decimal string.
+  private def self.scale_pow2(dec : String, exp : Int32) : String
+    result = dec
+    exp.times { result = KrikriJinja.big_mul(result, "2") }
+    result
   end
 
   # Containment (`in`).

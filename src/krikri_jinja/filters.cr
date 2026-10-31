@@ -46,20 +46,20 @@ module KrikriJinja
   register_filter("escape") do |v, _a, _k, _c|
     case v.raw
     when Markup then v
-    else AnyValue.new(Markup.new(escape_html(stringify(v))))
+    else             AnyValue.new(Markup.new(escape_html(stringify(v))))
     end
   end
   register_filter("e") do |v, _a, _k, _c|
     case v.raw
     when Markup then v
-    else AnyValue.new(Markup.new(escape_html(stringify(v))))
+    else             AnyValue.new(Markup.new(escape_html(stringify(v))))
     end
   end
   register_filter("forceescape") { |v, _a, _k, _c| AnyValue.new(Markup.new(escape_html(stringify(v)))) }
   register_filter("safe") do |v, _a, _k, _c|
     case raw = v.raw
     when Markup then v
-    else AnyValue.new(Markup.new(stringify(v)))
+    else             AnyValue.new(Markup.new(stringify(v)))
     end
   end
   register_filter("int") do |v, args, kwargs, _c|
@@ -77,20 +77,29 @@ module KrikriJinja
   end
   register_filter("float") do |v, args, kwargs, _c|
     raise TemplateError.new(KrikriJinja.undefined_message(v.raw.as(Undefined)), 0, kind: ErrorKind::Undefined) if v.raw.is_a?(Undefined)
+    # A wide integer (BigIntValue) can exceed Float64's range outright -
+    # Python's float(int) raises OverflowError("int too large to convert
+    # to float") there, and OverflowError is NOT one of the exceptions
+    # Jinja2's do_float traps into the default (only TypeError/
+    # ValueError are), so the failure propagates even when a default
+    # argument was given.
+    if (big = v.raw.as?(BigIntValue)) && big.value.to_f64?.nil?
+      raise TemplateError.new("int too large to convert to float", 0)
+    end
     default = (kwargs["default"]? || args[0]? || AnyValue.new(0.0)).raw.as?(Float64) || 0.0
     AnyValue.new(to_float(v.raw) || default)
   end
   register_filter("list") do |v, _a, _k, _c|
     items = case raw = v.raw
-            when Array then raw
+            when Array          then raw
             when GeneratorValue then raw.materialize
-            when TupleValue then raw.items
+            when TupleValue     then raw.items
             when Undefined
               raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
               [] of AnyValue
-            when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
+            when String      then raw.chars.map { |c| AnyValue.new(c.to_s) }
             when BigIntValue then raise TemplateError.new("'int' object is not iterable", 0)
-            when Hash then raw.keys.map { |k| AnyValue.new(k) }
+            when Hash        then raw.keys.map { |k| AnyValue.new(k) }
             else
               raise TemplateError.new("cannot convert #{raw.class} to list", 0)
             end
@@ -131,6 +140,7 @@ module KrikriJinja
       AnyValue.new(GeneratorValue.new(to_iterable(v).reverse))
     end
   end
+
   private def self.unique_hash_key(value : AnyValue) : AnyValue?
     raw = value.raw
     return nil if raw.is_a?(Float64) && (raw.as(Float64).nan? || raw.as(Float64).infinite?)
@@ -220,6 +230,7 @@ module KrikriJinja
     end
     decorated.map(&.[0])
   end
+
   register_filter("sort") do |v, _args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     reverse = (kwargs["reverse"]? || AnyValue.new(false)).raw == true
@@ -238,8 +249,6 @@ module KrikriJinja
     AnyValue.new(sorted)
   end
 
-
-
   register_filter("sum") do |v, args, kwargs, c|
     attr = kwargs["attribute"]?.try(&.raw.as?(String))
     items = to_iterable(v)
@@ -251,12 +260,12 @@ module KrikriJinja
   end
   register_filter("abs") do |v, _a, _k, _c|
     case raw = v.raw
-    when Int64   then AnyValue.new(raw.abs)
+    when Int64       then AnyValue.new(raw.abs)
     when BigIntValue then AnyValue.new(raw.absolute)
-    when Float64 then AnyValue.new(raw.abs)
-    when true    then AnyValue.new(1i64)
-    when false   then AnyValue.new(0i64)
-    else raise TemplateError.new("abs expects a number", 0)
+    when Float64     then AnyValue.new(raw.abs)
+    when true        then AnyValue.new(1i64)
+    when false       then AnyValue.new(0i64)
+    else                  raise TemplateError.new("abs expects a number", 0)
     end
   end
   register_filter("round") do |v, args, kwargs, _c|
@@ -264,9 +273,9 @@ module KrikriJinja
     precision = if p_raw.nil?
                   0i64
                 else
-                    (p_raw.as?(Int64) || (p_raw.as?(Bool).try { |b| b ? 1i64 : 0i64 }) ||
-                     (p_raw.as?(BigIntValue).try { |n| n.negative? ? -20i64 : 20i64 }) ||
-                     (s = p_raw.as?(String); s && big_int_string?(s) ? (s.starts_with?('-') ? -20i64 : 20i64) : nil) ||
+                  (p_raw.as?(Int64) || (p_raw.as?(Bool).try { |b| b ? 1i64 : 0i64 }) ||
+                    (p_raw.as?(BigIntValue).try { |n| n.negative? ? -20i64 : 20i64 }) ||
+                    (s = p_raw.as?(String); s && big_int_string?(s) ? (s.starts_with?('-') ? -20i64 : 20i64) : nil) ||
                     raise(TemplateError.new("round() cannot interpret the precision", 0))).to_i64
                 end
     if iv = v.raw.as?(Int64) || v.raw.as?(BigIntValue)
@@ -285,7 +294,7 @@ module KrikriJinja
       method = kwargs["method"]?.try(&.raw.as?(String)) || args[1]?.try(&.raw.as?(String)) || "common"
       x = v.raw.as?(Float64) || raise TemplateError.new("round expects a number", 0)
       result = case method
-               when "ceil" then (x * 10.0 ** precision).ceil / 10.0 ** precision
+               when "ceil"  then (x * 10.0 ** precision).ceil / 10.0 ** precision
                when "floor" then (x * 10.0 ** precision).floor / 10.0 ** precision
                else
                  if precision >= 0
@@ -301,17 +310,17 @@ module KrikriJinja
   register_filter("replace") do |v, args, kwargs, _c|
     s = stringify(v)
     old_raw = if old_arg = args[0]?
-               old_arg.raw
-             elsif old_kwarg = kwargs["old"]?
-               old_kwarg.raw
-             else
-               raise TemplateError.new("replace requires 'old'", 0)
-             end
+                old_arg.raw
+              elsif old_kwarg = kwargs["old"]?
+                old_kwarg.raw
+              else
+                raise TemplateError.new("replace requires 'old'", 0)
+              end
     new_raw = if new_arg = args[1]?
-               new_arg.raw
-             elsif new_kwarg = kwargs["new"]?
-               new_kwarg.raw
-             end
+                new_arg.raw
+              elsif new_kwarg = kwargs["new"]?
+                new_kwarg.raw
+              end
     old = stringify(AnyValue.new(old_raw))
     new = new_raw.nil? ? "" : stringify(AnyValue.new(new_raw))
     count = (args[2]?.try(&.raw.as?(Int64)) || kwargs["count"]?.try(&.raw.as?(Int64)) || Int64::MAX)
@@ -334,12 +343,12 @@ module KrikriJinja
               end
     end_str = end_raw.as?(String) || "..."
     end_len = case r = end_raw
-              when nil    then 3i64
-              when String then r.size.to_i64
-              when Array  then r.size.to_i64
-              when Hash   then r.size.to_i64
+              when nil        then 3i64
+              when String     then r.size.to_i64
+              when Array      then r.size.to_i64
+              when Hash       then r.size.to_i64
               when TupleValue then r.items.size.to_i64
-              else raise TemplateError.new("object of type '#{r}' has no len()", 0)
+              else                 raise TemplateError.new("object of type '#{r}' has no len()", 0)
               end
     leeway = (args[3]?.try(&.raw.as?(Int64)) || kwargs["leeway"]?.try(&.raw.as?(Int64)) || 5i64)
     case length_raw
@@ -356,16 +365,16 @@ module KrikriJinja
     body = case r = v.raw
            when String then r
            when Markup then r.value
-           else nil
+           else             nil
            end
     vlen = if body
              body.size.to_i64
            else
              case r = v.raw
-             when Array then r.size.to_i64
-             when Hash then r.size.to_i64
+             when Array      then r.size.to_i64
+             when Hash       then r.size.to_i64
              when TupleValue then r.items.size.to_i64
-             else raise TemplateError.new("object of type '#{r}' has no len()", 0)
+             else                 raise TemplateError.new("object of type '#{r}' has no len()", 0)
              end
            end
     s = body || stringify(v)
@@ -413,9 +422,9 @@ module KrikriJinja
   register_filter("striptags") do |v, _a, _k, _c|
     s = stringify(v).gsub(/<[^>]*>/, "").gsub(/\s+/, " ").strip
     s = s.gsub(/&#(\d+);/) { $1.to_i.chr.to_s }
-         .gsub(/&#x([0-9a-fA-F]+);/) { $1.to_i(16).chr.to_s }
-         .gsub("&lt;", "<").gsub("&gt;", ">").gsub("&quot;", "\"")
-         .gsub("&#39;", "'").gsub("&nbsp;", " ").gsub("&amp;", "&")
+      .gsub(/&#x([0-9a-fA-F]+);/) { $1.to_i(16).chr.to_s }
+      .gsub("&lt;", "<").gsub("&gt;", ">").gsub("&quot;", "\"")
+      .gsub("&#39;", "'").gsub("&nbsp;", " ").gsub("&amp;", "&")
     AnyValue.new(s)
   end
   register_filter("urlencode") do |v, _a, kwargs, _c|
@@ -501,7 +510,7 @@ module KrikriJinja
     group_index = {} of String => Int32
     sorted_items = stable_sort(to_iterable(v)) do |a, b|
       compare_values(get_attr(a, attr) || kwargs["default"]? || AnyValue.new(c.undefined),
-                     get_attr(b, attr) || kwargs["default"]? || AnyValue.new(c.undefined))
+        get_attr(b, attr) || kwargs["default"]? || AnyValue.new(c.undefined))
     end
     sorted_items.each do |item|
       key = get_attr(item, attr) || kwargs["default"]? || AnyValue.new(c.undefined)
@@ -687,7 +696,7 @@ module KrikriJinja
         compare_values(ka, kb)
       rescue TemplateError
         (case_sensitive ? stringify(ka) : stringify(ka).downcase) <=>
-          (case_sensitive ? stringify(kb) : stringify(kb).downcase)
+        (case_sensitive ? stringify(kb) : stringify(kb).downcase)
       end
       reverse ? -(cmp) : cmp
     end
@@ -701,8 +710,7 @@ module KrikriJinja
             (s = v.raw.as?(String); s && big_int_string?(s) ? s : nil) ||
             raise TemplateError.new("filesizeformat expects a number", 0)
     base = binary ? 1024i64 : 1000i64
-    prefixes = binary ? ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
-                      : ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    prefixes = binary ? ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"] : ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
     AnyValue.new(KrikriJinja.filesizeformat(bytes, base, prefixes, binary))
   end
   register_filter("format") do |v, args, kwargs, _c|
@@ -810,7 +818,7 @@ module KrikriJinja
     values.each do |value|
       case raw = value.raw
       when Int64 then numbers << raw
-      when Bool then numbers << (raw ? 1i64 : 0i64)
+      when Bool  then numbers << (raw ? 1i64 : 0i64)
       else
         raise TemplateError.new("'#{raw.class}' object cannot be interpreted as an integer", 0, kind: ErrorKind::Type)
       end
@@ -819,7 +827,7 @@ module KrikriJinja
     start, stop, step = case numbers.size
                         when 1 then {0i64, numbers[0], 1i64}
                         when 2 then {numbers[0], numbers[1], 1i64}
-                        else {numbers[0], numbers[1], numbers[2]}
+                        else        {numbers[0], numbers[1], numbers[2]}
                         end
     step = 1i64 if step == 0
     valid_range = step > 0 ? stop > start : stop < start
@@ -871,9 +879,9 @@ module KrikriJinja
   # Filters that accept keyword arguments in real Jinja2; map/filter passing
   # must raise for any others (Python raises TypeError instead).
   KWARG_FILTERS = %w(default dictsort filesizeformat float indent int join map
-                     max min reject rejectattr replace round select selectattr
-                     slice sort sum tojson trim truncate unique urlencode
-                     wordwrap groupby batch urlize wordcount format random)
+    max min reject rejectattr replace round select selectattr
+    slice sort sum tojson trim truncate unique urlencode
+    wordwrap groupby batch urlize wordcount format random)
 
   # Strict positional arity for filters python raises on when over-called.
   MAX_POSITIONAL = {"center" => 1, "trim" => 1, "indent" => 2, "round" => 2,
@@ -953,12 +961,12 @@ module KrikriJinja
 
   def self.length_of(v : AnyValue) : Int64
     case raw = v.raw
-    when String then raw.size.to_i64
+    when String      then raw.size.to_i64
     when BigIntValue then raise TemplateError.new("object of type Int has no length", 0)
-    when Array  then raw.size.to_i64
-    when Hash   then raw.size.to_i64
-    when TupleValue then raw.items.size.to_i64
-    when Markup then raw.value.size.to_i64
+    when Array       then raw.size.to_i64
+    when Hash        then raw.size.to_i64
+    when TupleValue  then raw.items.size.to_i64
+    when Markup      then raw.value.size.to_i64
     when Undefined
       raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       0i64
@@ -968,13 +976,13 @@ module KrikriJinja
 
   def self.to_iterable(v : AnyValue) : Array(AnyValue)
     case raw = v.raw
-    when Array then raw
+    when Array          then raw
     when GeneratorValue then raw.materialize
-    when String then raw.chars.map { |c| AnyValue.new(c.to_s) }
-    when BigIntValue then raise TemplateError.new("'int' object is not iterable", 0)
-    when Markup then raw.value.chars.map { |c| AnyValue.new(c.to_s) }
-    when TupleValue then raw.items
-    when Hash then raw.keys.map { |k| AnyValue.new(k) }
+    when String         then raw.chars.map { |c| AnyValue.new(c.to_s) }
+    when BigIntValue    then raise TemplateError.new("'int' object is not iterable", 0)
+    when Markup         then raw.value.chars.map { |c| AnyValue.new(c.to_s) }
+    when TupleValue     then raw.items
+    when Hash           then raw.keys.map { |k| AnyValue.new(k) }
     when Undefined
       raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       [] of AnyValue
@@ -984,10 +992,10 @@ module KrikriJinja
 
   private def self.to_int(v : AnyV, base : Int64 = 10i64) : Int64 | BigIntValue?
     case v
-    when Int64 then v
+    when Int64       then v
     when BigIntValue then v
-    when Float64 then v.to_i64
-    when Bool then v ? 1i64 : 0i64
+    when Float64     then v.to_i64
+    when Bool        then v ? 1i64 : 0i64
     when String
       s = v.strip
       if s.empty?
@@ -1013,10 +1021,10 @@ module KrikriJinja
 
   private def self.to_float(v : AnyV) : Float64?
     case v
-    when Int64 then v.to_f64
+    when Int64       then v.to_f64
     when BigIntValue then v.to_f64
-    when Bool then v ? 1.0 : 0.0
-    when Float64 then v
+    when Bool        then v ? 1.0 : 0.0
+    when Float64     then v
     when String
       v.strip.empty? ? nil : v.strip.to_f64?
     else nil
@@ -1027,7 +1035,7 @@ module KrikriJinja
     case v
     when Int64       then (v >= 0 ? v.to_s : nil)
     when BigIntValue then v.negative? ? nil : v.value
-    else nil
+    else                  nil
     end
   end
 
@@ -1042,9 +1050,9 @@ module KrikriJinja
     end
     if b_big = b.as?(BigIntValue)
       case a
-      when Int64       then return KrikriJinja.norm_decimal(KrikriJinja.big_add(a.to_s, b_big.value))
-      when Float64     then return a + b_big.to_f64
-      when Bool        then return KrikriJinja.norm_decimal(KrikriJinja.big_add(a ? "1" : "0", b_big.value))
+      when Int64   then return KrikriJinja.norm_decimal(KrikriJinja.big_add(a.to_s, b_big.value))
+      when Float64 then return a + b_big.to_f64
+      when Bool    then return KrikriJinja.norm_decimal(KrikriJinja.big_add(a ? "1" : "0", b_big.value))
       end
     end
     x = a.as?(Int64) || a.as?(Float64) || (a.is_a?(Bool) ? (a ? 1i64 : 0i64) : nil)
@@ -1111,9 +1119,9 @@ module KrikriJinja
              ->(args : Array(AnyValue), _k : Hash(String, AnyValue), _c : Context) do
                chars = args[0]?.try(&.raw.as?(String)) || " \t\r\n"
                r = case name
-                   when "strip" then s.strip(chars)
+                   when "strip"  then s.strip(chars)
                    when "lstrip" then s.lstrip(chars)
-                   else s.rstrip(chars)
+                   else               s.rstrip(chars)
                    end
                AnyValue.new(r)
              end
@@ -1222,20 +1230,20 @@ module KrikriJinja
                if tabsize <= 0
                  AnyValue.new(s.gsub('\t', ""))
                else
-               col = 0i64
-               expanded = String.build do |io|
-                 s.each_char do |ch|
-                   if ch == '\t'
-                     spaces = tabsize - (col % tabsize)
-                     spaces.times { io << ' ' }
-                     col += spaces
-                   else
-                     io << ch
-                     col += 1
+                 col = 0i64
+                 expanded = String.build do |io|
+                   s.each_char do |ch|
+                     if ch == '\t'
+                       spaces = tabsize - (col % tabsize)
+                       spaces.times { io << ' ' }
+                       col += spaces
+                     else
+                       io << ch
+                       col += 1
+                     end
                    end
                  end
-               end
-               AnyValue.new(expanded)
+                 AnyValue.new(expanded)
                end
              end
            when "casefold"
@@ -1456,15 +1464,15 @@ module KrikriJinja
         end
       when "first"
         case raw
-        when Array then raw.first?
+        when Array  then raw.first?
         when String then raw.empty? ? nil : AnyValue.new(raw[0].to_s)
-        else nil
+        else             nil
         end
       when "last"
         case raw
-        when Array then raw.last?
+        when Array  then raw.last?
         when String then raw.empty? ? nil : AnyValue.new(raw[-1].to_s)
-        else nil
+        else             nil
         end
       when "append"
         if raw.is_a?(Array)
@@ -1536,7 +1544,6 @@ module KrikriJinja
     else nil
     end
   end
-
 
   # Python list methods behind Jinja attribute access (see the dispatch
   # arm in get_attr). Value equality is Jinja's own values_equal.
@@ -1616,7 +1623,7 @@ module KrikriJinja
     io << '"'
     s.each_char do |c|
       case c
-      when '"' then io << '\\' << c
+      when '"'  then io << '\\' << c
       when '\\' then io << '\\' << '\\'
       when '\b' then io << '\\' << 'b'
       when '\f' then io << '\\' << 'f'
@@ -1645,14 +1652,14 @@ module KrikriJinja
 
   private def self.json_write(io : IO, v : AnyV, indent : Int64?, depth : Int32)
     case v
-    when Nil then io << "null"
-    when Bool then io << (v ? "true" : "false")
+    when Nil   then io << "null"
+    when Bool  then io << (v ? "true" : "false")
     when Int64 then v.to_s(io)
     when BigIntValue
       check_int_str_limit(v.value)
       io << v.value
     when Float64 then format_float(v).to_s(io)
-    when String then json_string(io, v)
+    when String  then json_string(io, v)
     when Markup
       json_string(io, v.value)
     when HostObject then json_write(io, KrikriJinja.from_json_any(v.to_json_any).raw, indent, depth)
@@ -1685,12 +1692,12 @@ module KrikriJinja
       key_str = ->(k : String) : String do
         dec = KrikriJinja.decode_key(k).raw
         case dec
-        when Int64 then dec.to_s
+        when Int64       then dec.to_s
         when BigIntValue then dec.value
-        when Bool  then dec ? "true" : "false"
-        when Nil   then "null"
-        when Float64 then KrikriJinja.format_float(dec)
-        else dec.as(String)
+        when Bool        then dec ? "true" : "false"
+        when Nil         then "null"
+        when Float64     then KrikriJinja.format_float(dec)
+        else                  dec.as(String)
         end
       end
       io << "{"

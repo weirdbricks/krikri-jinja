@@ -11,7 +11,22 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.34"
+  VERSION = "0.4.35"
+
+  # Prefix marking a string as the decimal text of an integer too wide
+  # for Int64 (RSA moduli, EC coordinates, big certificate serial
+  # numbers), carried through the JSON::Any world krikri's engine
+  # boundary speaks. JSON::Any's raw union tops out at Int64, so a host
+  # cannot hand the engine a real wide integer directly: the host stores
+  # the value as this marked string instead, #from_json_any turns it into
+  # a BigIntValue (so templates, tests and comparisons see a real int),
+  # and #to_json_any turns a BigIntValue back into the marked string for
+  # the return trip. The private-use control character makes a false
+  # positive on real string data effectively impossible. krikri keeps a
+  # byte-identical constant in Krikri::BIGINT_SENTINEL_PREFIX for the
+  # plugin binaries, which link neither this shard nor the jinja engine
+  # and so cannot reference it here.
+  BIGINT_SENTINEL_PREFIX = "\u{E000}bigint:"
 
   # Per-fiber count of undefined VALUE creations (a missing variable name,
   # a missing attribute/key on a resolved container, an attribute on a
@@ -69,10 +84,10 @@ module KrikriJinja
 
   def self.filesizeformat(bytes : AnyV, base : Int64, prefixes : Array(String), binary : Bool) : String
     byte_string = case value = bytes
-                  when Int64      then value.to_s
+                  when Int64       then value.to_s
                   when BigIntValue then value.value
-                  when String     then value
-                  else raise TemplateError.new("filesizeformat expects a number", 0)
+                  when String      then value
+                  else                  raise TemplateError.new("filesizeformat expects a number", 0)
                   end
     return "0 Bytes" if byte_string == "0"
     units = ["Bytes"] + prefixes
@@ -293,9 +308,9 @@ module KrikriJinja
   # into boxed template values.
   def self.wrap_value(x) : AnyValue
     case v = x
-    when AnyValue then v
+    when AnyValue  then v
     when JSON::Any then from_json_any(v)
-    when Array    then AnyValue.new(v.map { |e| wrap_value(e) })
+    when Array     then AnyValue.new(v.map { |e| wrap_value(e) })
     when Hash
       h = {} of String => AnyValue
       v.each { |k, e| h[k.to_s] = wrap_value(e) }
@@ -313,16 +328,16 @@ module KrikriJinja
     when Undefined
       raise TemplateError.new(KrikriJinja.undefined_message(raw), 0, kind: ErrorKind::Undefined) if raw.strict?
       JSON::Any.new(nil)
-    when TupleValue then JSON::Any.new(raw.items.map { |item| to_json_any(item) })
+    when TupleValue     then JSON::Any.new(raw.items.map { |item| to_json_any(item) })
     when GeneratorValue then JSON::Any.new(raw.materialize.map { |item| to_json_any(item) })
-    when Array then JSON::Any.new(raw.map { |item| to_json_any(item) })
+    when Array          then JSON::Any.new(raw.map { |item| to_json_any(item) })
     when Hash
       object = {} of String => JSON::Any
       raw.each { |key, item| object[key] = to_json_any(item) }
       JSON::Any.new(object)
-    when BigIntValue then JSON::Any.new(raw.value)
-    when HostObject then raw.to_json_any
-    when Markup then JSON::Any.new(raw.value)
+    when BigIntValue                       then JSON::Any.new(BIGINT_SENTINEL_PREFIX + raw.value)
+    when HostObject                        then raw.to_json_any
+    when Markup                            then JSON::Any.new(raw.value)
     when Nil, Bool, Int64, Float64, String then JSON::Any.new(raw)
     else
       raise TemplateError.new("value of type #{raw.class} is not JSON-compatible", 0, kind: ErrorKind::Conversion)
@@ -332,9 +347,21 @@ module KrikriJinja
   def self.from_json_any(x : JSON::Any) : AnyValue
     raw = x.raw
     case raw
-    when Nil then AnyValue.new(nil)
-    when Bool, Int64, Float64, String then AnyValue.new(raw)
-    when Array then AnyValue.new(raw.map { |e| from_json_any(e) })
+    when Nil  then AnyValue.new(nil)
+    when Bool then AnyValue.new(raw)
+    when String
+      # A BIGINT_SENTINEL_PREFIX-marked string is the host's wire form of
+      # an integer too wide for Int64 (see the constant's comment) -
+      # templates, tests and comparisons must see a real int, not text.
+      if raw.starts_with?(BIGINT_SENTINEL_PREFIX) &&
+         (digits = raw[BIGINT_SENTINEL_PREFIX.size..]) &&
+         digits.matches?(/\A-?(0|[1-9]\d*)\z/)
+        AnyValue.new(BigIntValue.new(digits))
+      else
+        AnyValue.new(raw)
+      end
+    when Int64, Float64 then AnyValue.new(raw)
+    when Array          then AnyValue.new(raw.map { |e| from_json_any(e) })
     when Hash
       h = {} of String => AnyValue
       raw.each { |k, e| h[k] = from_json_any(e) }
