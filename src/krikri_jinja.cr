@@ -11,7 +11,7 @@ require "./krikri_jinja/evaluator"
 require "./krikri_jinja/globals"
 
 module KrikriJinja
-  VERSION = "0.4.35"
+  VERSION = "0.4.36"
 
   # Prefix marking a string as the decimal text of an integer too wide
   # for Int64 (RSA moduli, EC coordinates, big certificate serial
