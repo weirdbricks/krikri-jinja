@@ -2719,6 +2719,25 @@ add("underscore integer", "{{ 1_000 }}")
 add("hex octal binary ints", "{{ 0x1f }} {{ 0o17 }} {{ 0b101 }}")
 add("float not after dot", "{{ 1.5 }} {{ a.0 }}", {"a": [1]})
 
+# --- undefined operands in arithmetic: real Jinja2 fails the operation
+# with the undefined value's own message (ChainableUndefined included);
+# `~` concat and string %-formatting go through str() and survive --------
+add("undefined add right", "{{ 'a' + missing }}")
+add("undefined add left", "{{ missing + 'a' }}")
+add("undefined attr-miss add", "{{ 'a' + d.b }}", {"d": {"x": 1}})
+add("undefined subscript-miss add", "{{ 'a' + d['k'] }}", {"d": {"x": 1}})
+add("undefined chained attr add", "{{ 'a' + d.missing.deep }}", {"d": {"x": 1}})
+add("undefined subtract", "{{ missing - 1 }}")
+add("undefined multiply", "{{ missing * 2 }}")
+add("undefined divide", "{{ missing / 2 }}")
+add("undefined floor divide", "{{ missing // 2 }}")
+add("undefined power", "{{ missing ** 2 }}")
+add("undefined modulo left", "{{ missing % 2 }}")
+add("undefined unary minus", "{{ -missing }}")
+add("undefined unary plus", "{{ +missing }}")
+add("undefined concat survives", "{{ 'a' ~ missing }} {{ missing ~ 'a' }}")
+add("undefined string percent survives", "{{ 'x%s' % missing }}")
+
 with open(__file__.rsplit("/", 1)[0] + "/cases.json", "w") as f:
     json.dump(cases, f, indent=1)
 print(f"wrote {len(cases)} cases")
