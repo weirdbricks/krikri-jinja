@@ -337,8 +337,12 @@ describe KrikriJinja do
         KrikriJinja.evaluate_expression("missing + 1", {} of String => JSON::Any, strict: true)
         raise "expected expression failure"
       rescue error : KrikriJinja::TemplateError
-        assert_equal(KrikriJinja::ErrorKind::Runtime, error.kind)
-        assert_equal(true, error.to_json.includes?("\"kind\":\"runtime\""))
+        # Real Jinja2 raises the undefined value's own message when an operator
+        # consumes it, so the kind is Undefined, not the generic Runtime, and
+        # the message names the missing variable.
+        assert_equal(KrikriJinja::ErrorKind::Undefined, error.kind)
+        assert_equal(true, error.to_json.includes?("\"kind\":\"undefined\""))
+        assert_equal(true, error.message.to_s.includes?("'missing' is undefined"))
       end
     end
 

@@ -1124,9 +1124,15 @@ module KrikriJinja
       when Nodes::UnaryOpNode
         case expr.op
         when "not" then AnyValue.new(!truthy?(eval(expr.operand)))
-        when "-" then AnyValue.new(negate(eval(expr.operand).raw))
+        when "-"
+          raw = eval(expr.operand).raw
+          # Real Jinja2 raises the undefined value's own message for unary
+          # +/- too (same Undefined hooks as the binary operators).
+          raise undefined_operand_error(raw, expr.line) if raw.is_a?(Undefined)
+          AnyValue.new(negate(raw))
         when "+"
           raw = eval(expr.operand).raw
+          raise undefined_operand_error(raw, expr.line) if raw.is_a?(Undefined)
           case raw
           when Int64, Float64, Bool then AnyValue.new(raw)
           else raise TemplateError.new("bad operand type for unary +: #{raw.class}", expr.line)
@@ -1171,6 +1177,14 @@ module KrikriJinja
       end
     end
 
+    # The error an arithmetic operator raises for an Undefined operand:
+    # the undefined value's own message (its missing-name text or the
+    # attribute/key-miss hint it chains), with the engine's Undefined
+    # error kind so hosts can route it like a failed variable lookup.
+    private def undefined_operand_error(value : AnyV, line : Int32) : TemplateError
+      TemplateError.new(KrikriJinja.undefined_message(value.as(Undefined)), line, kind: ErrorKind::Undefined)
+    end
+
     private def eval_binop(expr : Nodes::BinOpNode) : AnyValue
       case expr.op
       when "and"
@@ -1207,6 +1221,22 @@ module KrikriJinja
           fmt_args = tuple_arg ? right.as(TupleValue).items : [AnyValue.new(right)]
           formatted = KrikriJinja.py_format(f, fmt_args, tuple_arg)
           return AnyValue.new(left.is_a?(Markup) ? Markup.new(formatted) : formatted)
+        end
+        # Real Jinja2 fails every binary arithmetic operation that touches
+        # an undefined value with the undefined value's OWN message
+        # ("'x' is undefined", or the attribute/key-miss hint it carries) -
+        # verified against real Jinja2 via compare/, including the
+        # CHAINABLE undefined an environment sets: chaining only covers
+        # attribute/subscript access, an operator consuming the value
+        # still raises. The engine previously fell through to the generic
+        # "unsupported operands for +" shape with Crystal class names
+        # ("KrikriJinja::Undefined"), which left no path to the message
+        # the host needs to report. The string %-format case above is the
+        # one exception: real Jinja2 renders it through str(), which an
+        # undefined value survives as "".
+        if left.is_a?(Undefined) || right.is_a?(Undefined)
+          offending = left.is_a?(Undefined) ? left : right.as(Undefined)
+          raise undefined_operand_error(offending, expr.line)
         end
         result = case expr.op
                  when "+" then add(left, right)
