@@ -169,23 +169,9 @@ module KrikriJinja
         fargs = [] of ExprNode
         fkwargs = [] of Tuple(String, ExprNode)
         if accept_op("(")
-          loop do
-            break if accept_op(")")
-            if current.type == TokenType::Ident && peek(1).type == TokenType::Op &&
-               peek(1).value == "="
-              k = current.value
-              advance
-              advance
-              fkwargs << {k, parse_expression}
-            else
-              fargs << parse_expression
-            end
-            unless accept_op(",")
-              expect_op(")")
-              break
-            end
-            break if accept_op(")")
-          end
+          # The same argument grammar a bare call and a `|` filter use, so a
+          # starred argument unpacks here too.
+          fargs, fkwargs = parse_call_args_until_close
         end
         expect_block_end
         body, _tag, _ = parse_until(["endset"])

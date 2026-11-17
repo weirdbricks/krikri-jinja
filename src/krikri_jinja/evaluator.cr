@@ -933,9 +933,7 @@ module KrikriJinja
         if fname = node.filter_name
           f = @ctx.filter(fname) ||
               raise TemplateError.new("unknown filter #{fname.inspect}", node.line)
-          args = node.filter_args.map { |a| eval(a) }
-          kwargs = {} of String => AnyValue
-          node.filter_kwargs.each { |k, e| kwargs[k] = eval(e) }
+          args, kwargs = eval_call_arguments(node.filter_args, node.filter_kwargs)
           rendered = stringify(f.call(AnyValue.new(Markup.new(rendered)), args, kwargs, @ctx))
         end
         @ctx[node.targets.first] = @ctx.autoescape ? AnyValue.new(Markup.new(rendered)) : AnyValue.new(rendered)
@@ -1553,8 +1551,7 @@ module KrikriJinja
       value = eval(expr.target)
       f = @ctx.filter(expr.name) ||
           raise TemplateError.new("unknown filter #{expr.name.inspect}", expr.line)
-      args = expr.args.map { |a| eval(a) }
-      kwargs = eval_kwargs(expr.kwargs)
+      args, kwargs = eval_call_arguments(expr.args, expr.kwargs)
       result = f.call(value, args, kwargs, @ctx)
       # ansible-core 2.19 consumes the iterator/generator result of every
       # filter call at the call boundary (_wrap_plugin_output in
@@ -1772,24 +1769,35 @@ module KrikriJinja
       idxs
     end
 
-    private def eval_call(expr : Nodes::CallExprNode) : AnyValue
-      func = eval(expr.func)
-      args = [] of AnyValue
-      kw_exprs = expr.kwargs.dup
-      expr.args.each do |a|
+    # Jinja2's call-argument unpacking (`f(*seq)` / `f(**mapping)`) belongs
+    # to every call form, not only a bare function call: a `|` filter and a
+    # `{% set x | filter(...) %}` body filter are calls too, so
+    # `x | replace(*['a', 'x'])` passes the sequence's elements as separate
+    # positional arguments. Only eval_call implemented it, so a starred
+    # filter argument arrived as ONE list argument instead
+    # (kpg-playbook-generator's "Kpg star args" probes: ansible renders
+    # x|a|b where this engine rendered x|['a', 'b']).
+    private def eval_call_arguments(args : Array(ExprNode), kwargs : Array(Tuple(String, ExprNode))) : Tuple(Array(AnyValue), Hash(String, AnyValue))
+      positional = [] of AnyValue
+      kw_exprs = kwargs.dup
+      args.each do |a|
         if a.is_a?(Nodes::UnaryOpNode) && a.op == "*"
-          item = eval(a.operand)
-          args.concat(KrikriJinja.to_iterable(item))
+          positional.concat(KrikriJinja.to_iterable(eval(a.operand)))
         elsif a.is_a?(Nodes::UnaryOpNode) && a.op == "**"
           item = eval(a.operand)
           if item.raw.is_a?(Hash)
-            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
+            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, a.line)} }
           end
         else
-          args << eval(a)
+          positional << eval(a)
         end
       end
-      kwargs = eval_kwargs(kw_exprs)
+      {positional, eval_kwargs(kw_exprs)}
+    end
+
+    private def eval_call(expr : Nodes::CallExprNode) : AnyValue
+      func = eval(expr.func)
+      args, kwargs = eval_call_arguments(expr.args, expr.kwargs)
       case raw = func.raw
       when Callable
         result = raw.call(args, kwargs, @ctx)
