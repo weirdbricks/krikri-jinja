@@ -1,7 +1,8 @@
 # krikri-jinja
 
 A from-scratch Jinja2 template engine in Crystal, written as a clean-room
-reimplementation for the krikri-playbook project.
+reimplementation for the [krikri-playbook](https://github.com/weirdbricks/krikri)
+project.
 
 ## Clean-room basis
 
