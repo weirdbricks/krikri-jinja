@@ -1,5 +1,6 @@
 .crystal/
 .crystal-build-cache/
+/krikri_jinja
 docs/
 lib/
 bin/
