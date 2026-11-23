@@ -1370,6 +1370,29 @@ module KrikriJinja
           found = KrikriJinja.dict_lookup(raw, key)
           found || args[1]? || AnyValue.new(nil)
         end)
+      when "pop"
+        # dict.pop(key[, default]) removes and returns key's value. Python
+        # raises KeyError when the key is missing and no default was given,
+        # and its str() text is just the key's repr ("'missing'") - the
+        # message ansible surfaces for a template render, not "KeyError: ..."
+        # (verified against ansible-core 2.19.11 + Jinja2 3.1.6). Real
+        # ansible's dicts are dict subclasses, so every .pop() call real
+        # roles make works (mila.syslog_ng's sources.conf.j2 calls
+        # dic.pop('comment'), krikri issue #791).
+        AnyValue.new(KrikriJinja::SimpleCallable.new("pop") do |args, _k, _c|
+          raise TemplateError.new("pop expected at least 1 argument, got 0", 0) if args.empty?
+          raise TemplateError.new("pop expected at most 2 arguments, got #{args.size}", 0) if args.size > 2
+          key = args[0]
+          found = KrikriJinja.dict_lookup(raw, key)
+          if found
+            raw.delete(KrikriJinja.dict_key(key))
+            found
+          elsif (default = args[1]?)
+            default
+          else
+            raise TemplateError.new(KrikriJinja.stringify_repr(key), 0)
+          end
+        end)
       else raw[name]?
       end
     when LoopObject

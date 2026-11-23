@@ -12335,5 +12335,92 @@
     1
    ]
   }
+ },
+ {
+  "name": "undefined add right",
+  "template": "{{ 'a' + missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined add left",
+  "template": "{{ missing + 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "undefined attr-miss add",
+  "template": "{{ 'a' + d.b }}",
+  "data": {
+   "d": {
+    "x": 1
+   }
+  }
+ },
+ {
+  "name": "undefined subscript-miss add",
+  "template": "{{ 'a' + d['k'] }}",
+  "data": {
+   "d": {
+    "x": 1
+   }
+  }
+ },
+ {
+  "name": "undefined chained attr add",
+  "template": "{{ 'a' + d.missing.deep }}",
+  "data": {
+   "d": {
+    "x": 1
+   }
+  }
+ },
+ {
+  "name": "undefined subtract",
+  "template": "{{ missing - 1 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined multiply",
+  "template": "{{ missing * 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined divide",
+  "template": "{{ missing / 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined floor divide",
+  "template": "{{ missing // 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined power",
+  "template": "{{ missing ** 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined modulo left",
+  "template": "{{ missing % 2 }}",
+  "data": {}
+ },
+ {
+  "name": "undefined unary minus#2",
+  "template": "{{ -missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined unary plus",
+  "template": "{{ +missing }}",
+  "data": {}
+ },
+ {
+  "name": "undefined concat survives",
+  "template": "{{ 'a' ~ missing }} {{ missing ~ 'a' }}",
+  "data": {}
+ },
+ {
+  "name": "undefined string percent survives",
+  "template": "{{ 'x%s' % missing }}",
+  "data": {}
  }
 ]

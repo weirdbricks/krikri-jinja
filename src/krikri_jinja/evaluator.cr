@@ -933,9 +933,7 @@ module KrikriJinja
         if fname = node.filter_name
           f = @ctx.filter(fname) ||
               raise TemplateError.new("unknown filter #{fname.inspect}", node.line)
-          args = node.filter_args.map { |a| eval(a) }
-          kwargs = {} of String => AnyValue
-          node.filter_kwargs.each { |k, e| kwargs[k] = eval(e) }
+          args, kwargs = eval_call_arguments(node.filter_args, node.filter_kwargs)
           rendered = stringify(f.call(AnyValue.new(Markup.new(rendered)), args, kwargs, @ctx))
         end
         @ctx[node.targets.first] = @ctx.autoescape ? AnyValue.new(Markup.new(rendered)) : AnyValue.new(rendered)
@@ -1124,9 +1122,15 @@ module KrikriJinja
       when Nodes::UnaryOpNode
         case expr.op
         when "not" then AnyValue.new(!truthy?(eval(expr.operand)))
-        when "-" then AnyValue.new(negate(eval(expr.operand).raw))
+        when "-"
+          raw = eval(expr.operand).raw
+          # Real Jinja2 raises the undefined value's own message for unary
+          # +/- too (same Undefined hooks as the binary operators).
+          raise undefined_operand_error(raw, expr.line) if raw.is_a?(Undefined)
+          AnyValue.new(negate(raw))
         when "+"
           raw = eval(expr.operand).raw
+          raise undefined_operand_error(raw, expr.line) if raw.is_a?(Undefined)
           case raw
           when Int64, Float64, Bool then AnyValue.new(raw)
           else raise TemplateError.new("bad operand type for unary +: #{raw.class}", expr.line)
@@ -1171,6 +1175,14 @@ module KrikriJinja
       end
     end
 
+    # The error an arithmetic operator raises for an Undefined operand:
+    # the undefined value's own message (its missing-name text or the
+    # attribute/key-miss hint it chains), with the engine's Undefined
+    # error kind so hosts can route it like a failed variable lookup.
+    private def undefined_operand_error(value : AnyV, line : Int32) : TemplateError
+      TemplateError.new(KrikriJinja.undefined_message(value.as(Undefined)), line, kind: ErrorKind::Undefined)
+    end
+
     private def eval_binop(expr : Nodes::BinOpNode) : AnyValue
       case expr.op
       when "and"
@@ -1207,6 +1219,22 @@ module KrikriJinja
           fmt_args = tuple_arg ? right.as(TupleValue).items : [AnyValue.new(right)]
           formatted = KrikriJinja.py_format(f, fmt_args, tuple_arg)
           return AnyValue.new(left.is_a?(Markup) ? Markup.new(formatted) : formatted)
+        end
+        # Real Jinja2 fails every binary arithmetic operation that touches
+        # an undefined value with the undefined value's OWN message
+        # ("'x' is undefined", or the attribute/key-miss hint it carries) -
+        # verified against real Jinja2 via compare/, including the
+        # CHAINABLE undefined an environment sets: chaining only covers
+        # attribute/subscript access, an operator consuming the value
+        # still raises. The engine previously fell through to the generic
+        # "unsupported operands for +" shape with Crystal class names
+        # ("KrikriJinja::Undefined"), which left no path to the message
+        # the host needs to report. The string %-format case above is the
+        # one exception: real Jinja2 renders it through str(), which an
+        # undefined value survives as "".
+        if left.is_a?(Undefined) || right.is_a?(Undefined)
+          offending = left.is_a?(Undefined) ? left : right.as(Undefined)
+          raise undefined_operand_error(offending, expr.line)
         end
         result = case expr.op
                  when "+" then add(left, right)
@@ -1523,8 +1551,7 @@ module KrikriJinja
       value = eval(expr.target)
       f = @ctx.filter(expr.name) ||
           raise TemplateError.new("unknown filter #{expr.name.inspect}", expr.line)
-      args = expr.args.map { |a| eval(a) }
-      kwargs = eval_kwargs(expr.kwargs)
+      args, kwargs = eval_call_arguments(expr.args, expr.kwargs)
       result = f.call(value, args, kwargs, @ctx)
       # ansible-core 2.19 consumes the iterator/generator result of every
       # filter call at the call boundary (_wrap_plugin_output in
@@ -1742,24 +1769,35 @@ module KrikriJinja
       idxs
     end
 
-    private def eval_call(expr : Nodes::CallExprNode) : AnyValue
-      func = eval(expr.func)
-      args = [] of AnyValue
-      kw_exprs = expr.kwargs.dup
-      expr.args.each do |a|
+    # Jinja2's call-argument unpacking (`f(*seq)` / `f(**mapping)`) belongs
+    # to every call form, not only a bare function call: a `|` filter and a
+    # `{% set x | filter(...) %}` body filter are calls too, so
+    # `x | replace(*['a', 'x'])` passes the sequence's elements as separate
+    # positional arguments. Only eval_call implemented it, so a starred
+    # filter argument arrived as ONE list argument instead
+    # (kpg-playbook-generator's "Kpg star args" probes: ansible renders
+    # x|a|b where this engine rendered x|['a', 'b']).
+    private def eval_call_arguments(args : Array(ExprNode), kwargs : Array(Tuple(String, ExprNode))) : Tuple(Array(AnyValue), Hash(String, AnyValue))
+      positional = [] of AnyValue
+      kw_exprs = kwargs.dup
+      args.each do |a|
         if a.is_a?(Nodes::UnaryOpNode) && a.op == "*"
-          item = eval(a.operand)
-          args.concat(KrikriJinja.to_iterable(item))
+          positional.concat(KrikriJinja.to_iterable(eval(a.operand)))
         elsif a.is_a?(Nodes::UnaryOpNode) && a.op == "**"
           item = eval(a.operand)
           if item.raw.is_a?(Hash)
-            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, expr.line)} }
+            item.raw.as(Hash).each { |k, v| kw_exprs << {k, Nodes::ConstNode.new(v.raw, a.line)} }
           end
         else
-          args << eval(a)
+          positional << eval(a)
         end
       end
-      kwargs = eval_kwargs(kw_exprs)
+      {positional, eval_kwargs(kw_exprs)}
+    end
+
+    private def eval_call(expr : Nodes::CallExprNode) : AnyValue
+      func = eval(expr.func)
+      args, kwargs = eval_call_arguments(expr.args, expr.kwargs)
       case raw = func.raw
       when Callable
         result = raw.call(args, kwargs, @ctx)
