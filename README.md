@@ -13,7 +13,7 @@ referenced while writing the lexer, parser, or evaluator. Behavior is verified
 against the documented semantics and against expected-output examples written
 from the docs.
 
-## Status (v0.4.15)
+## Status (v1.0.0)
 
 Implemented:
 
@@ -52,6 +52,12 @@ Additional compatibility features:
 - Recursive `{% for %}` with `{{ loop(children) }}` recursion and
   `loop.depth`; `loop.cycle(...)` and `loop.changed(...)`
 - Macro introspection: `varargs`, `kwargs`, `name`, `caller`
+- `*`/`**` unpacking in filter and block-`filter` arguments as well as
+  bare calls
+- `dict.pop(key[, default])` through attribute access, with Python's own
+  `KeyError`/`TypeError` wording on the failure paths
+- Arithmetic and unary operators on an undefined value fail with that
+  value's own message (`'name' is undefined`), not a generic type error
 - `{% call(x, y) macro() %}` caller-body parameters
 - `{% set x %}...{% endset %}` block form
 - `{% include ['a.html', 'b.html'] %}` fallback lists
