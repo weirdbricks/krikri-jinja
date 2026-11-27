@@ -16,4 +16,4 @@ crystal: ">= 1.10.0"
 development_dependencies:
   minitest:
     github: weirdbricks/minitest.cr
-    tag: v1.8.0-weirdbricks.1
+    tag: v1.8.1-weirdbricks.1
